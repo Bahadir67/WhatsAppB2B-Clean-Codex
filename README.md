@@ -3,12 +3,18 @@
 ## 🚀 Proje Özeti
 OpenAI Swarm Multi-Agent sistemi ile WhatsApp üzerinden B2B ürün sorgulama, sipariş yönetimi ve satış desteği sağlayan akıllı asistan.
 
+## 📋 Durum
+[![GitHub last commit](https://img.shields.io/github/last-commit/Bahadir67/WhatsAppB2B-Clean-Codex)](https://github.com/Bahadir67/WhatsAppB2B-Clean-Codex/commits/main)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](package.json)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.8-blue)](requirements.txt)
+
 ## 🔄 Hızlı Kurulum (Clone & Run)
 
 ```bash
 # 1. Projeyi klonla
-git clone https://github.com/Bahadir67/B2B_Agent.git
-cd B2B_Agent
+git clone https://github.com/Bahadir67/WhatsAppB2B-Clean-Codex.git
+cd WhatsAppB2B-Clean-Codex
 
 # 2. Python sanal ortam oluştur (önerilen)
 python -m venv venv
