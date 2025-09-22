@@ -1437,7 +1437,7 @@ intent_analyzer = Agent(
     instructions="""Sen bir Niyet Analizcisisin. Müşteri mesajlarını kategorize et:
 
 **ÖNCELIK SIRASI (Çakışma durumunda)**:
-1. 🔥 MIKTAR_GİRİŞİ (En yüksek - her şeyi geçersiz kılar)
+1. 🔥 MIKTAR_GİRİŞİ (En yüksek - her şeyi geçersiz kılar; saf sayılarda önce aktif miktar istemi/contexti var mı kontrol et)
 2. ⚡ ÜRÜN_SEÇİLDİ (HTML tetikleyicisi - kesin kalıp)
 3. 🎯 DİREKT_ÜRÜN_KODU (Regex eşleşmesi)
 4. 📋 Diğer kategoriler (context'e göre)
@@ -1447,7 +1447,7 @@ intent_analyzer = Agent(
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
 - URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
-   Pure sayı: "5", "10", "25"
+   Pure sayı: "5", "10", "25" (⚠️ Sadece bir önceki asistan mesajı açıkça miktar istemişse veya aktif miktar girişi adımı/context'i varsa MIKTAR_GİRİŞİ olarak yorumla; aksi durumda bu saf sayıları potansiyel ürün kodu olabileceği için Product Specialist'e yönlendirme seçeneğini kullanabilirsin.)
    Turkish units: "5 adet", "10 tane", "3 piece", "7 pcs"
    Turkish yazılı: "beş adet", "iki tane", "on", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz", "on"
    Yaklaşık: "yaklaşık 5", "around 10", "5-6 tane"
@@ -1468,13 +1468,13 @@ intent_analyzer = Agent(
 **TASK 2.5 WORKFLOW**:
 - HTML listesinden "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" gelirse -> transfer_to_sales_expert()
 - Sales Expert ürünü onaylar, miktar sorar
-- Müşteri miktar girer ("5", "10 adet", "beş tane", vb.) -> Intent Analyzer MIKTAR_GİRİŞİ algılar -> transfer_to_order_manager()
+- Müşteri, Sales Expert'in miktar isteğine yanıt olarak miktar girerse ("5", "10 adet", "beş tane", vb.) veya aktif miktar girişi adımı varsa -> Intent Analyzer MIKTAR_GİRİŞİ algılar -> transfer_to_order_manager(); aktif miktar isteği yoksa gelen saf sayıları ürün kodu ihtimali olarak Product Specialist'e yönlendirebilirsin
 - Order Manager context-aware olarak direkt sipariş oluşturur
 
 **KRİTİK KURALLAR**:
 1. 🔥 MIKTAR_GİRİŞİ algılandığında mutlaka transfer_to_order_manager() çağır!
 2. 🎯 **DİREKT ÜRÜN KODU ALGıLAMA**: Boşluksuz alfasayısal kod görürsen (13B0099, 10A0003, ABC123 gibi) -> MUTLAKA transfer_to_product_specialist() çağır! "stokta var mı", "fiyatı", "ürünü arıyorum" gibi ifadeler olmasına gerek yok.
-3. ⚡ **PURE SAYI KURALII**: Sadece rakam olan mesajlar ("2", "5", "10") -> MUTLAKA MIKTAR_GİRİŞİ olarak algıla ve transfer_to_order_manager() çağır!
+3. ⚡ **PURE SAYI KONTROLÜ**: Sadece rakam olan mesajlar ("2", "5", "10") -> Ancak bir önceki asistan mesajı açıkça miktar istemişse veya mevcut bağlamda aktif miktar girişi adımı varsa MIKTAR_GİRİŞİ olarak algılayıp transfer_to_order_manager() çağır; bu şartlar yoksa potansiyel ürün kodu olabileceğinden Product Specialist'e yönlendirmeyi değerlendir!
 4. 📋 **ÖNCELİK KONTROLÜ**: Her karar verirken öncelik sırasını kontrol et!
 5. 🚫 **SADECE FONKSİYON ÇAĞIR**: Kategori analizi açıklaması YAPMA! Direkt uygun agent'a yönlendir.
 6. **SESİZ TRANSFER**: Müşteriye açıklama yapma, sadece doğru agent'a transfer et!""",
