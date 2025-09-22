@@ -596,7 +596,7 @@ def valve_search_tool(query: str) -> str:
             in_stock_count = len([p for p in products if p['stock'] > 0])
             
             # Liste linki response (Tunnel URL kullan)
-            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
             response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
             
@@ -729,7 +729,7 @@ def air_preparation_search_tool(query: str) -> str:
             print(f"[HTML] Created: {filename}")
             
             # HTML listesi için URL (env'den al)
-            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             list_url = f"{tunnel_url}/products/{filename}"
             
             response = f"💼 {count} ürün - {in_stock} stokta\n\n"
@@ -813,7 +813,7 @@ def product_search_tool(query: str) -> str:
                 in_stock_count = len([p for p in all_products if p['stock'] > 0])
                 
                 # Liste linki response (Tunnel URL kullan)
-                tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3006')
+                tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
                 response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
                 response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
                 
