@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Bahadira-NB3/.local/bin//**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

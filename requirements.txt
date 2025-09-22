@@ -1,0 +1,13 @@
+# Python Dependencies for WhatsApp B2B AI System
+
+# Core Dependencies
+swarm-framework==0.1.0
+flask==3.0.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+openai==1.12.0
+requests==2.31.0
+
+# Optional (if using CrewAI legacy code)
+# crewai==0.1.0
+# langchain-openai==0.0.5
