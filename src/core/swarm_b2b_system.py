@@ -484,146 +484,6 @@ def generate_product_html(products, query, html_filename):
 </html>"""
     return html
 
-
-def _extract_selection_index(selection_message: str) -> tuple[bool, int | str]:
-    """Helper: Parse müşteri mesajından ürün seçim indeksini çıkar."""
-    try:
-        if not selection_message:
-            return False, "[ERROR] Ürün seçimi boş olamaz."
-
-        message = selection_message.strip().lower()
-
-        # Özel kelimeler
-        special_keywords = {
-            'ilk': 1,
-            'ilki': 1,
-            'ilkini': 1,
-            'son': -1,
-            'sonu': -1,
-            'sonuncu': -1,
-        }
-
-        for keyword, value in special_keywords.items():
-            if keyword in message:
-                return True, value
-
-        # Türkçe ordinal kelimeler
-        ordinal_map = {
-            'birinci': 1,
-            'ikinci': 2,
-            'üçüncü': 3,
-            'ucuncu': 3,
-            'dördüncü': 4,
-            'dorduncu': 4,
-            'beşinci': 5,
-            'besinci': 5,
-            'altıncı': 6,
-            'altinci': 6,
-            'yedinci': 7,
-            'sekizinci': 8,
-            'dokuzuncu': 9,
-            'onuncu': 10
-        }
-
-        for word, index in ordinal_map.items():
-            if word in message:
-                return True, index
-
-        # Numerik ifadeler ("3. ürünü seç", "3 urun", "3. sıradaki")
-        if any(keyword in message for keyword in ['ürün', 'urun', 'seç', 'sec', 'siradaki', 'sıradaki']):
-            digit_match = re.search(r'(\d{1,3})', message)
-            if digit_match:
-                index = int(digit_match.group(1))
-                return True, index
-
-        return False, "[ERROR] Ürün sırası algılanamadı. Lütfen '3. ürünü seç' gibi belirtin."
-
-    except Exception as exc:
-        return False, f"[ERROR] Ürün seçimi indeks analizi hatası: {str(exc)}"
-
-
-def _get_latest_product_session(whatsapp_number: str) -> tuple[bool, tuple[str, dict] | str]:
-    """Helper: Verilen WhatsApp numarası için en güncel ürün listesini bul."""
-    try:
-        global product_list_sessions
-
-        if not whatsapp_number or whatsapp_number == 'unknown':
-            return False, "[ERROR] Geçerli WhatsApp numarası bulunamadı."
-
-        candidates: List[Tuple[str, dict]] = []
-        for key, data in product_list_sessions.items():
-            if isinstance(data, dict) and data.get('whatsapp_number') == whatsapp_number:
-                candidates.append((key, data))
-
-        if not candidates:
-            return False, "[ERROR] Aktif ürün listesi bulunamadı. Lütfen yeniden ürün arayın."
-
-        latest_key, latest_data = max(candidates, key=lambda item: item[1].get('timestamp', 0))
-        return True, (latest_key, latest_data)
-
-    except Exception as exc:
-        return False, f"[ERROR] Ürün listesi erişim hatası: {str(exc)}"
-
-
-def select_product_by_index(whatsapp_number: str, selection_message: str) -> str:
-    """Ürün listesindeki sıraya göre seçim yapıp handle_product_selection akışını tetikle."""
-    try:
-        target_whatsapp = whatsapp_number or current_whatsapp_context.get('whatsapp_number', 'unknown')
-
-        if not target_whatsapp or target_whatsapp == 'unknown':
-            return "[ERROR] WhatsApp numarası bulunamadı. Lütfen önce ürün araması yapın."
-
-        success, index_or_error = _extract_selection_index(selection_message)
-        if not success:
-            return index_or_error  # Hata mesajı
-
-        index_value = index_or_error
-
-        session_ok, session_info = _get_latest_product_session(target_whatsapp)
-        if not session_ok:
-            return session_info  # Hata mesajı
-
-        session_key, session_data = session_info
-        products = session_data.get('products') or []
-
-        if not products:
-            return "[ERROR] Ürün listesi boş. Lütfen yeni bir arama yapın."
-
-        if index_value == -1:  # "son" seçimi
-            index_value = len(products)
-
-        if index_value < 1 or index_value > len(products):
-            return f"[ERROR] {index_value}. ürün bulunamadı. Listedeki ürün sayısı: {len(products)}"
-
-        selected = products[index_value - 1]
-        product_code = selected.get('code') or selected.get('product_code') or 'BILINMIYOR'
-        product_name = selected.get('name') or selected.get('product_name') or 'Seçilen Ürün'
-        raw_price = selected.get('price', 0)
-
-        # Fiyatı normalize et
-        price_value = 0.0
-        try:
-            if isinstance(raw_price, (int, float)):
-                price_value = float(raw_price)
-            elif raw_price is None:
-                price_value = 0.0
-            else:
-                cleaned = str(raw_price)
-                cleaned = cleaned.replace('TL', '').replace('₺', '').strip()
-                cleaned = cleaned.replace(',', '.').split(' ')[0]
-                price_value = float(cleaned)
-        except Exception:
-            price_value = 0.0
-
-        formatted_message = f"URUN_SECILDI: {product_code} - {product_name} - {price_value:.2f} TL"
-
-        print(f"[INDEX SELECTION] {target_whatsapp}: {index_value}. ürün -> {product_code} ({session_key})")
-
-        return handle_product_selection(target_whatsapp, formatted_message)
-
-    except Exception as exc:
-        return f"[ERROR] Ürün seçiminde hata: {str(exc)}"
-
 def is_quantity_context_valid(whatsapp_number: str) -> tuple[bool, str]:
     """
     TASK 2.5: Check if user has a valid product context for quantity input
@@ -655,7 +515,7 @@ def valve_search_tool(query: str) -> str:
     """Valve (valf) ürün arama - SQL valve_bul fonksiyonunu kullanır - AI ile parametre çıkarma"""
     try:
         # Global context'ten WhatsApp numarasını al
-        global current_whatsapp_context, product_list_sessions
+        global current_whatsapp_context
         
         # AI ile parametreleri çıkar (silindir gibi)
         params = db.extract_valve_params_with_ai(query)
@@ -734,19 +594,7 @@ def valve_search_tool(query: str) -> str:
             
             # Stokta olan ürünleri say (products değişkenini kullan)
             in_stock_count = len([p for p in products if p['stock'] > 0])
-
-            # Session bilgisini kaydet - index seçimi için kullanılacak
-            global product_list_sessions
-            product_list_sessions[html_filename] = {
-                'products': products[:50],
-                'query': query,
-                'whatsapp_number': actual_whatsapp,
-                'timestamp': time.time(),
-                'html_filename': html_filename,
-                'session_id': session_id,
-                'source': 'valve_search'
-            }
-
+            
             # Liste linki response (Tunnel URL kullan)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
@@ -832,15 +680,31 @@ def air_preparation_search_tool(query: str) -> str:
         if products:
             count = len(products)
             in_stock = sum(1 for p in products if p[4] > 0)  # stock_quantity index
-
+            
             # Session'a kaydet
             session_id = str(uuid.uuid4())[:8]
-            whatsapp_number = current_whatsapp_context.get('whatsapp_number', 'unknown')
-
+            product_list_sessions[session_id] = {
+                'products': [
+                    {
+                        'id': p[0],
+                        'code': p[1],
+                        'name': p[2],
+                        'price': float(p[3]) if p[3] else 0,
+                        'stock': p[4],
+                        'unit_type': p[5],
+                        'connection_size': p[6],
+                        'description': p[7]
+                    }
+                    for p in products[:50]  # İlk 50 ürün
+                ],
+                'query': query,
+                'whatsapp_number': current_whatsapp_context.get('whatsapp_number', 'unknown')
+            }
+            
             # HTML dosyası oluştur
-            whatsapp_number_clean = whatsapp_number.replace('@c.us', '').replace('+', '')
+            whatsapp_number = current_whatsapp_context.get('whatsapp_number', 'unknown').replace('@c.us', '')
             timestamp = int(time.time() * 1000)
-            filename = f"products_{whatsapp_number_clean}_{session_id}_{timestamp}.html"
+            filename = f"products_{whatsapp_number}_{session_id}_{timestamp}.html"
             
             # HTML içeriği oluştur
             # generate_product_html kullan (onclick versiyonu - buton yok)
@@ -862,28 +726,9 @@ def air_preparation_search_tool(query: str) -> str:
             
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-
+            
             print(f"[HTML] Created: {filename}")
-
-            # HTML session kaydını güncelle
-            product_list_sessions[filename] = {
-                'products': [
-                    {
-                        'code': p[1],
-                        'name': p[2],
-                        'price': float(p[3]) if p[3] else 0,
-                        'stock': p[4]
-                    }
-                    for p in products[:50]
-                ],
-                'query': query,
-                'whatsapp_number': whatsapp_number,
-                'timestamp': time.time(),
-                'html_filename': filename,
-                'session_id': session_id,
-                'source': 'air_preparation_search'
-            }
-
+            
             # HTML listesi için URL (env'den al)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             list_url = f"{tunnel_url}/products/{filename}"
@@ -963,20 +808,9 @@ def product_search_tool(query: str) -> str:
                 # Dosyaya yaz
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)
-
+                
                 print(f"[HTML CREATED] {html_path}")
-
-                # Session bilgisini kaydet - index tabanlı seçimler için
-                product_list_sessions[html_filename] = {
-                    'products': all_products[:50],
-                    'query': query,
-                    'whatsapp_number': actual_whatsapp,
-                    'timestamp': time.time(),
-                    'html_filename': html_filename,
-                    'session_id': session_id,
-                    'source': 'product_search'
-                }
-
+                
                 # Stokta olan ürünleri say
                 in_stock_count = len([p for p in all_products if p['stock'] > 0])
                 
@@ -1614,7 +1448,7 @@ intent_analyzer = Agent(
 **Kategoriler**:
 - URUN_ARAMA: "100x200 silindir", "filtre ariyorum", "ürün arıyorum", "valf arıyorum", "5/2 valf", "3/2 valf", "pnömatik valf", "şartlandırıcı", "regülatör", "yağlayıcı", "FRY", "MFRY", "MFR", "MR", "Y 1/2", "hava hazırlayıcı", "13B0099", "10A0003" (DİREKT ÜRÜN KODLARI), "[ALFASAYISAL KOD] stokta var mı?", "[ÜRÜN KODU] fiyatı?", boşluksuz alfasayısal kodlar -> transfer_to_product_specialist()
 - ÜRÜN_SEÇİLDİ: "ÜRÜN_SEÇİLDİ: [kod] - [isim] - [fiyat] TL" veya "URUN_SECILDI: [kod] - [isim] - [fiyat] TL" (HTML'den gelen) -> transfer_to_sales_expert()
-- URUN_SECIMI: "3. ürünü seç", "ilk ürünü al", "son ürünü gönder", "bu ürünü seç" gibi liste index seçimleri -> transfer_to_sales_expert() (Sales Expert select_product_by_index(whatsapp_number, müşteri_mesajı) çağırır; whatsapp_number = context_variables['whatsapp_number'])
+- URUN_SECIMI: "3. ürünü seç", "bu ürünün fiyatı", "ürünü seçtim", "Kod XXX seçtim", "fiyat nedir" -> transfer_to_sales_expert()
 - MIKTAR_GİRİŞİ: **TASK 2.5 - ENHANCED** Çok çeşitli miktar formatları:
    Pure sayı: "5", "10", "25" (⚠️ Sadece bir önceki asistan mesajı açıkça miktar istemişse veya aktif miktar girişi adımı/context'i varsa MIKTAR_GİRİŞİ olarak yorumla; aksi durumda bu saf sayıları potansiyel ürün kodu olabileceği için Product Specialist'e yönlendirme seçeneğini kullanabilirsin.)
    Turkish units: "5 adet", "10 tane", "3 piece", "7 pcs"
@@ -1744,11 +1578,9 @@ sales_expert = Agent(
 - Kullanıcıdan teknik format (ÜRÜN_SEÇİLDİ:...) isteme!
 - Miktar gelince otomatik Order Manager'a yönlendir
 
-**HTML LİSTE & INDEX SEÇİMİ**:
+**ESKI WORKFLOW - HTML LİSTE**:
 - "ÜRÜN_SEÇİLDİ:" ile başlayan mesaj gelirse -> handle_product_selection()
-- Müşteri "3. ürünü seç", "ilk ürünü al", "son ürünü gönder" gibi seçim yaparsa -> select_product_by_index(whatsapp_number, müşteri_mesajı) çağır
-  • whatsapp_number parametresi context_variables['whatsapp_number'] değeridir
-  • Fonksiyon seçimi doğrular ve handle_product_selection() akışını tetikler
+- Bu fonksiyon ürünü doğrular, context'e kaydeder, miktar sorar
 
 **MESAJ FORMATI - KISA VE NET**:
 Ürün onaylandığında şu mesajı gönder:
@@ -1763,10 +1595,10 @@ Kaç adet? (1-[max_stok] arası)"
 
 **ÖNEMLİ**: 
 - Ürün arama YAPMA! Sadece seçilen ürünlerle çalış
-- ÜRÜN_SEÇİLDİ mesajları veya index bazlı seçimler için handle_product_selection() / select_product_by_index() kullan
+- ÜRÜN_SEÇİLDİ mesajları için handle_product_selection() kullan
 - Miktar sorulduktan sonra müşteri rakam girerse Intent Analyzer MIKTAR_GİRİŞİ algılayıp Order Manager'a gönderir
 - Türkçe konuş ve net talimatlar ver!""",
-    functions=[handle_product_selection, select_product_by_index, price_quote_tool, get_order_history, get_order_details, transfer_to_order_manager, transfer_back_to_intent_analyzer]
+    functions=[handle_product_selection, price_quote_tool, get_order_history, get_order_details, transfer_to_order_manager, transfer_back_to_intent_analyzer]
 )
 
 # 5. Order Manager - TASK 2.5: Enhanced context-aware quantity processing and instant ordering
