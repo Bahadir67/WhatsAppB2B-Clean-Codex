@@ -708,8 +708,10 @@ Sadece JSON döndür, başka açıklama yapma:
             cursor = self.connection.cursor()
             sql = """
             SELECT product_code, product_name, stock_quantity, price
-            FROM products_semantic 
+            FROM products_semantic
             WHERE product_code = %s
+            ORDER BY id DESC
+            LIMIT 1
             """
             cursor.execute(sql, (product_code,))
             row = cursor.fetchone()

@@ -574,7 +574,7 @@ def valve_search_tool(query: str) -> str:
             
             # HTML dosyası oluştur - PLAN'A GÖRE
             import os
-            html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
+            html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')
             os.makedirs(html_dir, exist_ok=True)
             
             # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
@@ -598,7 +598,8 @@ def valve_search_tool(query: str) -> str:
             # Liste linki response (Tunnel URL kullan)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
-            response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
+            response += f"{tunnel_url}/products/{html_filename}\n\n"
+            response += "Ürünleri seçmek için linke tıklayın."
             
             print(f"[VALVE SEARCH] Found {count} valves, created session: {session_id}")
             return response
@@ -719,7 +720,7 @@ def air_preparation_search_tool(query: str) -> str:
             html_content = generate_product_html(formatted_products, query, filename)
             
             # HTML dosyasını kaydet
-            product_pages_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
+            product_pages_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')
             os.makedirs(product_pages_dir, exist_ok=True)
             filepath = os.path.join(product_pages_dir, filename)
             
@@ -733,7 +734,8 @@ def air_preparation_search_tool(query: str) -> str:
             list_url = f"{tunnel_url}/products/{filename}"
             
             response = f"💼 {count} ürün - {in_stock} stokta\n\n"
-            response += f"URUN LISTESI:\n{list_url}"
+            response += f"{list_url}\n\n"
+            response += "Ürünleri seçmek için linke tıklayın."
             
             return response
         else:
@@ -791,7 +793,7 @@ def product_search_tool(query: str) -> str:
                 
                 # HTML dosyası oluştur - PLAN'A GÖRE
                 import os
-                html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean/product-pages')
+                html_dir = os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')
                 os.makedirs(html_dir, exist_ok=True)
                 
                 # Dosya adı formatı: products_{whatsapp}_{session}_{timestamp}.html
@@ -815,7 +817,8 @@ def product_search_tool(query: str) -> str:
                 # Liste linki response (Tunnel URL kullan)
                 tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
                 response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
-                response += f"URUN LISTESI:\n{tunnel_url}/products/{html_filename}"
+                response += f"{tunnel_url}/products/{html_filename}\n\n"
+                response += "Ürünleri seçmek için linke tıklayın."
                 
                 print(f"[PRODUCT SEARCH] Found {count} products, created session: {session_id}")
                 return response
@@ -1505,9 +1508,9 @@ Sadece müşteri işlemleri, ürün arama yapmıyorsun!""",
 
 # 3. Product Specialist - Urun arama ve HTML liste olustur
 product_specialist = Agent(
-    name="Product Specialist", 
+    name="Product Specialist",
     model=OPENROUTER_MODEL,
-    instructions="""You are Product Specialist. **Single-Product Instant Workflow**
+    instructions="""You are Product Specialist. RESPOND IN TURKISH.
 
 **ARAMA ARAÇLARI**:
 - valve_search_tool: VALF aramaları için kullan (5/2 valf, 3/2 valf, 1/4 valf gibi)
@@ -1533,21 +1536,24 @@ product_specialist = Agent(
 - Müşteriyi direkt Sales Expert'e yönlendir
 - Liste oluşturma, HTML sayfa üretme gerekmez!
 
-**RESPONSE FORMAT**:
-When tool finds products, return the tool response plus a helpful comment:
+**CRITICAL RESPONSE RULE**:
+When a tool returns a response with a URL, you MUST return EXACTLY what the tool returns.
+DO NOT add ANY text before or after.
+DO NOT translate.
+DO NOT explain.
+DO NOT add context.
+JUST COPY THE EXACT TOOL OUTPUT.
 
-Tool response (copy exactly):
-💼 [COUNT] ürün - [IN_STOCK] stokta
+Example:
+If tool returns:
+💼 57 ürün - 5 stokta
 
-URUN LISTESI:
-[TUNNEL_URL]/products/[ID]
+http://localhost:3005/products/products_xxx.html
 
-Then add your own contextual message based on:
-- Product type found
-- Customer's specific need
-- Next suggested action
+You MUST return EXACTLY:
+💼 57 ürün - 5 stokta
 
-Example: "İsteğinize uygun seçenekleri listelendi. Teknik detayları inceleyip uygun olanları seçebilirsiniz."
+http://localhost:3005/products/products_xxx.html
 
 **NEW WORKFLOW**: When product selected from HTML list, customer goes directly to Sales Expert via ÜRÜN_SEÇİLDİ intent!""",
     functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order, transfer_to_sales_expert]

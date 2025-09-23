@@ -70,18 +70,9 @@ client.on('message', async (message) => {
                 console.log('[DEBUG] Full response data:', JSON.stringify(response.data, null, 2));
                 const swarmResponse = response.data.response || response.data.message || "Yanıt alınamadı";
                 
-                // Check for product list link
-                const linkMatch = swarmResponse.match(/URUN LISTESI: (https?:\/\/[^\s]+)/);
-                if (linkMatch) {
-                    // Format with clickable link
-                    const formattedResponse = swarmResponse.replace(
-                        linkMatch[0],
-                        `📋 *ÜRÜN LİSTESİ:*\n${linkMatch[1]}`
-                    );
-                    await client.sendMessage(message.from, formattedResponse);
-                } else {
-                    await client.sendMessage(message.from, swarmResponse);
-                }
+                // Send the response directly without any formatting
+                // WhatsApp will automatically make URLs clickable
+                await client.sendMessage(message.from, swarmResponse);
                 
                 console.log(`[Swarm Yanıt] ${userId}: ${swarmResponse.substring(0, 100)}...`);
             } else {
