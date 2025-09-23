@@ -977,10 +977,7 @@ def create_order_confirmation_message(order_number: str, order_data: dict, total
         
         # Delivery info removed per user request
         
-        # Contact info
-        confirmation += " İLETİŞİM:\n"
-        confirmation += "    Sipariş durumu: WhatsApp'tan sorabilirsiniz\n"
-        confirmation += "    Destek: 0530 689 7885\n\n"
+        # Contact info removed per user request - unnecessary on WhatsApp
         
         # Footer
         confirmation += "[OK] Siparişiniz başarıyla alınmıştır!\n"
@@ -1117,13 +1114,13 @@ def cancel_order(whatsapp_number: str, order_number: str = "") -> str:
             
             order_id, status = order
             
-            if status != 'draft':
+            if status == 'cancelled':
                 cursor.close()
-                return f"SİPARİŞ İPTAL EDİLEMEZ: {order_number} sipariş durumu '{status}' - Sadece taslak siparişler iptal edilebilir."
+                return f"SİPARİŞ ZATEN İPTAL EDİLMİŞ: {order_number} numaralı sipariş zaten iptal edilmiş."
             
             # Siparişi iptal et
             cursor.execute("""
-                UPDATE orders 
+                UPDATE orders
                 SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, [order_id])
@@ -1131,7 +1128,10 @@ def cancel_order(whatsapp_number: str, order_number: str = "") -> str:
             db.connection.commit()
             cursor.close()
             
-            return f"[OK] SİPARİŞ İPTAL EDİLDİ: {order_number} numaralı siparişiniz başarıyla iptal edildi."
+            if status == 'confirmed':
+                return f"[UYARI] SİPARİŞ İPTAL EDİLDİ: {order_number} numaralı onaylanmış siparişiniz iptal edildi. Lütfen dikkat, onaylanmış siparişlerin iptali için ek işlem gerekebilir."
+            else:
+                return f"[OK] SİPARİŞ İPTAL EDİLDİ: {order_number} numaralı siparişiniz başarıyla iptal edildi."
         
         else:
             # Genel iptal - sadece draft siparişleri iptal et (sepet sistemi yok)
