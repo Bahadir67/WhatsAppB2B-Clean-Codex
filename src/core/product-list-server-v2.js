@@ -49,6 +49,7 @@ app.get('/', (req, res) => {
     `);
 });
 
+
 // MIGRATION: Static file serving endpoint (replaces database session endpoint)
 app.get('/products/:filename', async (req, res) => {
     try {
@@ -146,15 +147,21 @@ app.post('/select-product', express.json(), async (req, res) => {
         
         // Convert HTML product selection to ÜRÜN_SEÇİLDİ format for Swarm system
         // Use URUN_SECILDI instead of ÜRÜN_SEÇİLDİ to avoid encoding issues
-        const urunSeciidiMessage = `URUN_SECILDI: ${product.code} - ${product.name} - ${product.price} TL`;
-        console.log(`[FORMAT CONVERSION] Original: ${message} → URUN_SECILDI: ${urunSeciidiMessage}`);
+        const normalizedPrice = String(product.price ?? '').trim();
+        const hasTlSuffix = /\bTL$/i.test(normalizedPrice);
+        const containsDigit = /\d/.test(normalizedPrice);
+        const priceWithCurrency = !normalizedPrice
+            ? ''
+            : (hasTlSuffix || !containsDigit ? normalizedPrice : `${normalizedPrice} TL`);
+        const urunSecildiMessage = `URUN_SECILDI: ${product.code} - ${product.name} - ${priceWithCurrency}`;
+        console.log(`[FORMAT CONVERSION] Original: ${message} → URUN_SECILDI: ${urunSecildiMessage}`);
         
         // Send ÜRÜN_SEÇİLDİ intent to Swarm system
         const axios = require('axios');
         
         try {
             const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
-                message: urunSeciidiMessage,
+                message: urunSecildiMessage,
                 whatsapp_number: whatsappNumber
             });
             
@@ -256,6 +263,19 @@ process.on('SIGINT', () => {
 });
 
 // Generate HTML for product list
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value);
+}
+
 function generateProductListHTML(products, query, sessionId) {
     const html = `
 <!DOCTYPE html>
@@ -263,7 +283,7 @@ function generateProductListHTML(products, query, sessionId) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ürün Listesi - ${query}</title>
+    <title>Ürün Listesi - ${escapeHtml(query)}</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
@@ -284,54 +304,96 @@ function generateProductListHTML(products, query, sessionId) {
     <div class="container">
         <div class="header">
             <h2>🛍️ Ürün Listesi</h2>
-            <p>Arama: "<strong>${query}</strong>"</p>
+            <p>Arama: "<strong>${escapeHtml(query)}</strong>"</p>
             <p>Toplam ${products.length} ürün bulundu</p>
         </div>
-        
-        ${products.map(product => `
-            <div class="product ${product.stock <= 0 ? 'out-of-stock' : ''}">
-                <div class="product-name">${product.name}</div>
-                <div class="product-code">Kod: ${product.code}</div>
-                <div class="product-price">${product.price} TL</div>
-                <div class="product-stock">Stok: ${product.stock} adet</div>
-                ${product.stock > 0 ? 
-                    `<button class="select-btn" onclick="selectProduct('${product.code}', '${product.name}', ${product.price})">Ürünü Seç</button>` :
+
+        ${products.map(product => {
+            const codeValue = product.code ?? '';
+            const nameValue = product.name ?? '';
+            const priceValue = product.price ?? '';
+            const rawPriceString = String(priceValue).trim();
+            const numericLike = /^\d+(?:[.,]\d+)?$/.test(rawPriceString);
+            const hasCurrency = /\bTL$/i.test(rawPriceString);
+            const priceLabel = rawPriceString === ''
+                ? 'Fiyat bilgisi yok'
+                : (hasCurrency || !numericLike ? rawPriceString : `${rawPriceString} TL`);
+            const priceDatasetRaw = hasCurrency
+                ? rawPriceString.replace(/\bTL$/i, '').trim()
+                : rawPriceString;
+            const priceDataset = priceDatasetRaw || priceLabel;
+            const stockValue = product.stock ?? '';
+            const parsedStock = typeof product.stock === 'number'
+                ? product.stock
+                : parseInt(product.stock, 10);
+            const hasNumericStock = !Number.isNaN(parsedStock);
+            const hasStock = hasNumericStock ? parsedStock > 0 : Boolean(stockValue);
+            const stockLabel = hasNumericStock
+                ? `${parsedStock} adet`
+                : String(stockValue || 'Stok bilgisi yok');
+
+            return `
+            <div class="product ${hasStock ? '' : 'out-of-stock'}">
+                <div class="product-name">${escapeHtml(nameValue)}</div>
+                <div class="product-code">Kod: ${escapeHtml(codeValue)}</div>
+                <div class="product-price">${escapeHtml(priceLabel)}</div>
+                <div class="product-stock">Stok: ${escapeHtml(stockLabel)}</div>
+                ${hasStock ?
+                    `<button class="select-btn" data-code="${escapeAttribute(codeValue)}" data-name="${escapeAttribute(nameValue)}" data-price="${escapeAttribute(priceDataset)}" data-price-label="${escapeAttribute(priceLabel)}">Ürünü Seç</button>` :
                     `<button class="select-btn" disabled>Stokta Yok</button>`
                 }
-            </div>
-        `).join('')}
+            </div>`;
+        }).join('')}
     </div>
-    
+
     <script>
-        function selectProduct(code, name, price) {
-            const message = "ÜRÜN_SEÇİLDİ: " + code + " - " + name + " - " + price + " TL";
-            
-            // Try to send to Swarm system
-            fetch('/select-product', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: message,
-                    sessionId: '${sessionId}',
-                    productCode: code,
-                    productName: name,
-                    productPrice: price
-                })
-            }).then(response => {
-                if (response.ok) {
-                    alert('Ürün seçildi! WhatsApp üzerinden devam edin.');
-                } else {
-                    alert('Seçim başarısız. Lütfen WhatsApp üzerinden devam edin.');
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.querySelector('.container');
+            if (!container) {
+                return;
+            }
+
+            container.addEventListener('click', async (event) => {
+                const button = event.target.closest('.select-btn');
+                if (!button || button.disabled) {
+                    return;
                 }
-            }).catch(error => {
-                console.error('Selection error:', error);
-                alert('Ürün seçimi için WhatsApp üzerinden "' + code + '" yazın.');
+
+                const code = (button.dataset.code || '').trim();
+                const name = (button.dataset.name || '').trim();
+                const price = (button.dataset.price || '').trim();
+                const priceLabel = (button.dataset.priceLabel || '').trim();
+                const message = `ÜRÜN_SEÇİLDİ: ${code} - ${name} - ${priceLabel}`;
+
+                try {
+                    const response = await fetch('/select-product', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            sessionId: '${sessionId}',
+                            productCode: code,
+                            productName: name,
+                            productPrice: price
+                        })
+                    });
+
+                    const result = await response.json().catch(() => null);
+                    if (response.ok && result?.success) {
+                        alert('Ürün seçildi! WhatsApp üzerinden devam edin.');
+                    } else {
+                        alert('Seçim başarısız. Lütfen WhatsApp üzerinden devam edin.');
+                    }
+                } catch (error) {
+                    console.error('Selection error:', error);
+                    alert('Ürün seçimi için WhatsApp üzerinden "' + code + '" yazın.');
+                }
             });
-        }
+        });
     </script>
 </body>
 </html>`;
-    
+
     return html;
 }
 
