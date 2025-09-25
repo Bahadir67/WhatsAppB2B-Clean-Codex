@@ -145,7 +145,7 @@ app.post('/send-message', async (req, res) => {
 });
 
 // Reply server'ı başlat
-const REPLY_PORT = 3001;
+const REPLY_PORT = parseInt(config.env.WHATSAPP_WEBHOOK_PORT, 10) || 3001;
 app.listen(REPLY_PORT, () => {
     console.log(`WhatsApp Reply Server: http://localhost:${REPLY_PORT}/send-message`);
 });
