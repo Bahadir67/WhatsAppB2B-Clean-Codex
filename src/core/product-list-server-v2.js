@@ -10,7 +10,7 @@ const port = process.env.PRODUCT_SERVER_PORT || 3005;
 const HTMLCleanupService = require('./html-cleanup-service');
 
 // Initialize and start cleanup service
-const cleanupService = new HTMLCleanupService(config.paths.productPages, 10, 5); // 10 min max age, 5 min interval
+const cleanupService = new HTMLCleanupService(config.paths.productPages, 60, 60); // 60 min max age, hourly cleanup
 cleanupService.start();
 
 // Static files serving
@@ -62,7 +62,7 @@ app.get('/', (req, res) => {
             <p>Bu server WhatsApp üzerinden gelen ürün sorgularını işler.</p>
             <p>Ürün listesi linki almak için WhatsApp'tan ürün araması yapın.</p>
             <hr>
-            <p>Status: ✅ Aktif | Port: ${process.env.PRODUCT_SERVER_PORT || 3006}</p>
+            <p>Status: ✅ Aktif | Port: ${port}</p>
         </body>
         </html>
     `);

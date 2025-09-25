@@ -75,6 +75,7 @@ WhatsApp → WhatsApp Bot → OpenAI Swarm System → PostgreSQL → Response
 - Arama ve filtreleme
 - Session bazlı saklama
 - Otomatik Cloudflare tunnel linki
+- Saatlik HTML dosya temizliği (1 saatten eski kataloglar kaldırılır)
 
 ### 4. Gelişmiş Sipariş Sistemi
 - Ürün seçimi algılama
@@ -171,7 +172,8 @@ WHATSAPP_PHONE=905306897885
 
 # Server Ports
 ORCHESTRATOR_PORT=3000
-REPLY_SERVER_PORT=3001
+WHATSAPP_WEBHOOK_PORT=3001
+PRODUCT_SERVER_PORT=3005
 CUSTOMER_AGENT_PORT=3003
 SWARM_SERVER_PORT=3007
 
@@ -187,8 +189,9 @@ DB_PASSWORD=your_password
 ```
 
 ### Portlar
-- `3001`: WhatsApp Reply Server
-- `3007`: OpenAI Swarm Multi-Agent System
+- `WHATSAPP_WEBHOOK_PORT` (varsayılan 3001): WhatsApp Reply Server
+- `PRODUCT_SERVER_PORT` (varsayılan 3005): Ürün kataloğu sunucusu
+- `SWARM_SERVER_PORT` (varsayılan 3007): OpenAI Swarm Multi-Agent System
 - `5678`: n8n (isteğe bağlı, kullanılmıyor)
 
 ## 📊 Multi-Agent İş Akışı
