@@ -509,7 +509,79 @@ def is_quantity_context_valid(whatsapp_number: str) -> tuple[bool, str]:
 
 def customer_check_tool(whatsapp_number: str) -> str:
     """Müşteri bilgilerini kontrol et"""
-    return f"Müşteri {whatsapp_number} - Kredi limiti: 50.000 TL, Risk skoru: 85/100, Aktif müşteri"
+    try:
+        # Get customer data from database
+        result = db.check_customer(whatsapp_number)
+        
+        if not result.get('success'):
+            return f"❌ **HATA**\n{result.get('error', 'Bilinmeyen hata')}"
+        
+        response = f"🏢 **ŞİRKET BİLGİLERİNİZ**\n"
+        response += "="*35 + "\n\n"
+        
+        if result.get('is_existing_customer'):
+            # Existing customer
+            company_name = result.get('company_name', 'Belirtilmemiş')
+            credit_limit = result.get('credit_limit', 0.0)
+            risk_score = result.get('risk_score', 50)
+            customer_type = result.get('customer_type', 'PERAKENDE')
+            status = result.get('status', 'ACTIVE')
+            
+            response += f"🏢 Şirket: {company_name}\n"
+            response += f"📱 WhatsApp: {whatsapp_number}\n"
+            response += f"💰 Kredi Limiti: {credit_limit:,.0f} TL\n"
+            
+            # Risk score with description
+            if risk_score >= 80:
+                risk_desc = "Mükemmel"
+            elif risk_score >= 60:
+                risk_desc = "İyi"
+            elif risk_score >= 40:
+                risk_desc = "Orta"
+            else:
+                risk_desc = "Düşük"
+            
+            response += f"⭐ Risk Puanı: {risk_score}/100 ({risk_desc})\n"
+            response += f"👤 Müşteri Tipi: {customer_type}\n"
+            response += f"✅ Durum: {status}\n\n"
+            response += "="*35 + "\n"
+            
+            # Status-based advice
+            if credit_limit > 10000:
+                response += "🔹 Yüksek kredi limitiniz mevcuttur\n"
+            elif credit_limit > 0:
+                response += "🔹 Kredi limitiniz mevcuttur\n"
+            else:
+                response += "🔹 Kredi limiti henüz belirlenmemiş\n"
+                
+            if risk_score >= 70:
+                response += "🔹 Risk puanınız çok iyidir\n"
+            elif risk_score >= 50:
+                response += "🔹 Risk puanınız iyidir\n"
+            else:
+                response += "🔹 Risk puanınızı iyileştirmek için düzenli ödeme yapın\n"
+                
+            if status.upper() == 'ACTIVE':
+                response += "🔹 Hesabınız aktif durumdadır\n\n"
+                response += "💡 Sipariş verebilir ve tüm hizmetlerden yararlanabilirsiniz!"
+            else:
+                response += "🔹 Hesabınız pasif durumdadır\n\n"
+                response += "⚠️ Lütfen müşteri temsilcisiyle iletişime geçin"
+                
+        else:
+            # New customer
+            response += f"📱 WhatsApp: {whatsapp_number}\n"
+            response += f"👤 Durum: Yeni Müşteri\n\n"
+            response += "="*35 + "\n"
+            response += "🔹 Henüz sistemimizde kayıtlı değilsiniz\n"
+            response += "🔹 Kayıt olmak için müşteri temsilcisiyle görüşün\n"
+            response += "🔹 Kayıt sonrası kredi limiti belirlenecektir\n\n"
+            response += "📞 Kayıt için lütfen satış temsilcisiyle iletişime geçin"
+        
+        return response
+        
+    except Exception as e:
+        return f"❌ **HATA**\nMüşteri kontrolü yapılamadı: {str(e)}"
 
 def valve_search_tool(query: str) -> str:
     """Valve (valf) ürün arama - SQL valve_bul fonksiyonunu kullanır - AI ile parametre çıkarma"""

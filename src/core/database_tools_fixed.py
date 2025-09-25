@@ -732,15 +732,99 @@ Sadece JSON döndür, başka açıklama yapma:
             print(f"[DB Stock Error] {e}")
             return {"error": str(e)}
     
+    def normalize_whatsapp_number(self, whatsapp_number: str) -> str:
+        """WhatsApp numarasını normalize et - farklı formatları destekle"""
+        if not whatsapp_number:
+            return whatsapp_number
+
+        # Boşlukları ve özel karakterleri temizle
+        cleaned = ''.join(c for c in whatsapp_number if c.isdigit())
+
+        # +90 ile başlayanları 90 ile değiştir
+        if cleaned.startswith('90') and len(cleaned) == 12:
+            return cleaned  # Zaten doğru format
+        elif cleaned.startswith('090') and len(cleaned) == 13:
+            return cleaned[1:]  # 090... → 90...
+        elif cleaned.startswith('0530') and len(cleaned) == 11:
+            return '90' + cleaned[1:]  # 0530... → 90530...
+        elif len(cleaned) == 10 and cleaned.startswith('530'):
+            return '90530' + cleaned[3:]  # 530... → 90530...
+        else:
+            return cleaned  # Diğer durumlar için olduğu gibi bırak
+
     def check_customer(self, whatsapp_number: str) -> Dict[str, Any]:
-        """Müşteri kontrolü - Task 3.2 validated"""
-        return {
-            "whatsapp_number": whatsapp_number,
-            "customer_id": hash(whatsapp_number) % 10000,
-            "credit_limit": 50000.0,
-            "risk_score": 85,
-            "status": "active"
-        }
+        """Müşteri kontrolü - Real database query with number normalization"""
+        if not self.connection:
+            return {"error": "Database connection failed"}
+
+        try:
+            cursor = self.connection.cursor()
+
+            # Normalize the WhatsApp number for better matching
+            normalized_number = self.normalize_whatsapp_number(whatsapp_number)
+            print(f"[CUSTOMER CHECK] Original: {whatsapp_number}, Normalized: {normalized_number}")
+
+            # Try multiple formats for better matching
+            possible_formats = [
+                normalized_number,  # Normalized format
+                whatsapp_number,    # Original format
+                '+' + normalized_number if not normalized_number.startswith('+') else normalized_number,
+                normalized_number[1:] if normalized_number.startswith('90') else normalized_number
+            ]
+
+            # Remove duplicates
+            possible_formats = list(set(possible_formats))
+
+            # Query customer from database with multiple format attempts
+            sql = """
+            SELECT id, company_name, whatsapp_number, credit_limit,
+                   customer_type, risk_score, status, created_at
+            FROM customers
+            WHERE whatsapp_number = ANY(%s)
+            LIMIT 1
+            """
+
+            cursor.execute(sql, (possible_formats,))
+            result = cursor.fetchone()
+            cursor.close()
+
+            if result:
+                # Customer found in database
+                print(f"[CUSTOMER FOUND] ID: {result[0]}, Company: {result[1]}, Number: {result[2]}")
+                return {
+                    "success": True,
+                    "customer_id": result[0],
+                    "company_name": result[1],
+                    "whatsapp_number": result[2],  # Return stored format
+                    "credit_limit": float(result[3]) if result[3] else 0.0,
+                    "customer_type": result[4] or "PERAKENDE",
+                    "risk_score": result[5] or 50,
+                    "status": result[6] or "ACTIVE",
+                    "created_at": result[7],
+                    "is_existing_customer": True,
+                    "normalized_input": normalized_number,
+                    "matched_format": result[2]
+                }
+            else:
+                # Customer not found - return new customer info
+                print(f"[CUSTOMER NOT FOUND] Number: {whatsapp_number}, Normalized: {normalized_number}")
+                return {
+                    "success": True,
+                    "whatsapp_number": whatsapp_number,
+                    "customer_id": None,
+                    "company_name": None,
+                    "credit_limit": 0.0,
+                    "customer_type": "PERAKENDE",
+                    "risk_score": 50,
+                    "status": "NEW",
+                    "is_existing_customer": False,
+                    "message": "Yeni müşteri - kayıt gerekli",
+                    "normalized_input": normalized_number
+                }
+
+        except Exception as e:
+            print(f"[DB Error] check_customer: {e}")
+            return {"error": f"Customer check failed: {str(e)}", "success": False}
     
     def get_connection_status(self) -> Dict[str, Any]:
         """Get connection status for validation"""
