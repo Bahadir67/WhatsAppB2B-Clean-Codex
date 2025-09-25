@@ -75,6 +75,8 @@ WhatsApp → WhatsApp Bot → OpenAI Swarm System → PostgreSQL → Response
 - Arama ve filtreleme
 - Session bazlı saklama
 - Otomatik Cloudflare tunnel linki
+- Saatlik HTML dosya temizliği (varsayılan 1 saatten eski kataloglar kaldırılır)
+- `/catalogs` endpoint'i ile aktif katalogları ve yaşlarını inceleyebilme
 
 ### 4. Gelişmiş Sipariş Sistemi
 - Ürün seçimi algılama
@@ -124,7 +126,10 @@ python swarm_b2b_system.py
 # Terminal 2 - WhatsApp Bot
 node whatsapp-webhook-sender.js
 
-# Terminal 3 (isteğe bağlı) - Cloudflare Tunnel
+# Terminal 3 - Ürün listesi sunucusu
+node src/core/product-list-server-v2.js
+
+# Terminal 4 (isteğe bağlı) - Cloudflare Tunnel
 ./cloudflared.exe tunnel --url http://localhost:3007
 ```
 
@@ -159,6 +164,12 @@ node whatsapp-webhook-sender.js
 "fiyat bilgisi"
 ```
 
+### Operasyon Araçları
+
+- `GET /catalogs`: Aktif ürün kataloglarının listesini JSON formatında döndürür. Her kayıt dosya adı, WhatsApp numarası, seans kimliği,
+  son değiştirilme tarihi, boyutu ve temizleme eşiğine göre bayat (stale) olup olmadığı bilgisini içerir. Bu sayede manuel paylaşılmış
+  linklerin hala geçerli olup olmadığını hızla kontrol edebilirsiniz.
+
 ## 🔧 Konfigürasyon
 
 ### Environment Değişkenleri (.env)
@@ -168,12 +179,18 @@ OPENAI_API_KEY=your_openai_key_here
 
 # WhatsApp
 WHATSAPP_PHONE=905306897885
+WHATSAPP_WEBHOOK_URL=http://localhost:3001
 
 # Server Ports
 ORCHESTRATOR_PORT=3000
-REPLY_SERVER_PORT=3001
+WHATSAPP_WEBHOOK_PORT=3001
+PRODUCT_SERVER_PORT=3005
 CUSTOMER_AGENT_PORT=3003
 SWARM_SERVER_PORT=3007
+
+# Catalog Cleanup
+PRODUCT_PAGE_RETENTION_MINUTES=60
+PRODUCT_PAGE_CLEANUP_INTERVAL_MINUTES=60
 
 # CloudFlare Tunnel
 TUNNEL_URL=https://your-tunnel-url.trycloudflare.com
@@ -187,9 +204,18 @@ DB_PASSWORD=your_password
 ```
 
 ### Portlar
-- `3001`: WhatsApp Reply Server
-- `3007`: OpenAI Swarm Multi-Agent System
+- `WHATSAPP_WEBHOOK_URL` (varsayılan `http://localhost:3001`): WhatsApp Reply Server'a gönderilecek temel URL.
+- `WHATSAPP_WEBHOOK_PORT` (varsayılan 3001): WhatsApp Reply Server
+- `PRODUCT_SERVER_PORT` (varsayılan 3005): Ürün kataloğu sunucusu
+- `PRODUCT_PAGE_RETENTION_MINUTES` (varsayılan 60): Ürün kataloglarının disk üzerinde tutulacağı dakika cinsinden süre
+- `PRODUCT_PAGE_CLEANUP_INTERVAL_MINUTES` (varsayılan 60): Temizlik servisinin çalışma sıklığı
+- `SWARM_SERVER_PORT` (varsayılan 3007): OpenAI Swarm Multi-Agent System
 - `5678`: n8n (isteğe bağlı, kullanılmıyor)
+
+`WHATSAPP_PHONE` değeri yeni katalog formatında dosya adına gömülür, eski kataloglarda ise (ör. `products_session.html`) otomatik
+fallback olarak kullanılır. WhatsApp Reply Server farklı bir hostta çalışıyorsa `WHATSAPP_WEBHOOK_URL` değerini güncelleyerek
+ürün sunucusunun doğru endpoint'e mesaj iletmesini sağlayabilirsiniz. Üretim ortamında doğru numara ve URL tanımı kritik
+öneme sahiptir.
 
 ## 📊 Multi-Agent İş Akışı
 
