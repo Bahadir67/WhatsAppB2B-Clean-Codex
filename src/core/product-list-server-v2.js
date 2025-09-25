@@ -3,54 +3,33 @@ const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 
+function toPositiveInt(value, fallback) {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+        return fallback;
+    }
+
+    return parsed;
+}
+
 const app = express();
 const port = process.env.PRODUCT_SERVER_PORT || 3005;
+const retentionMinutes = toPositiveInt(process.env.PRODUCT_PAGE_RETENTION_MINUTES, 60);
+const cleanupIntervalMinutes = toPositiveInt(process.env.PRODUCT_PAGE_CLEANUP_INTERVAL_MINUTES, 60);
+const whatsappWebhookPort = parseInt(process.env.WHATSAPP_WEBHOOK_PORT, 10) || 3001;
+const whatsappWebhookUrl = (process.env.WHATSAPP_WEBHOOK_URL || `http://localhost:${whatsappWebhookPort}`).replace(/\/$/, '');
+const defaultWhatsappNumber = process.env.WHATSAPP_PHONE ? `${process.env.WHATSAPP_PHONE}@c.us` : null;
 
 // Import cleanup service
 const HTMLCleanupService = require('./html-cleanup-service');
 
 // Initialize and start cleanup service
-const cleanupService = new HTMLCleanupService(config.paths.productPages, 10, 5); // 10 min max age, 5 min interval
+const cleanupService = new HTMLCleanupService(config.paths.productPages, retentionMinutes, cleanupIntervalMinutes);
 cleanupService.start();
 
 // Static files serving
 app.use('/products', express.static(config.paths.productPages));
 app.use(express.json());
-
-// Filename parsing utility
-function parseFilename(filename) {
-    try {
-        if (!filename.startsWith('products_') || !filename.endsWith('.html')) {
-            return null;
-        }
-        
-        const parts = filename.replace('.html', '').split('_');
-        
-        // Support both legacy format (2 parts) and new format (4 parts)
-        if (parts.length === 2) {
-            // Legacy format: products_<session>.html
-            return {
-                whatsappNumber: '905306897885@c.us', // Default fallback
-                sessionId: parts[1],
-                timestamp: Date.now(),
-                legacy: true
-            };
-        } else if (parts.length === 4) {
-            // New format: products_<whatsapp>_<session>_<timestamp>.html
-            return {
-                whatsappNumber: parts[1] + '@c.us',
-                sessionId: parts[2], 
-                timestamp: parseInt(parts[3]),
-                legacy: false
-            };
-        } else {
-            return null;
-        }
-    } catch (error) {
-        console.error(`[PARSE ERROR] ${filename}:`, error.message);
-        return null;
-    }
-}
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -62,7 +41,9 @@ app.get('/', (req, res) => {
             <p>Bu server WhatsApp üzerinden gelen ürün sorgularını işler.</p>
             <p>Ürün listesi linki almak için WhatsApp'tan ürün araması yapın.</p>
             <hr>
-            <p>Status: ✅ Aktif | Port: ${process.env.PRODUCT_SERVER_PORT || 3006}</p>
+            <p>Status: ✅ Aktif | Port: ${port}</p>
+            <p>Katalog saklama süresi: ${retentionMinutes} dakika | Temizlik sıklığı: ${cleanupIntervalMinutes} dakika</p>
+            <p>Aktif katalogları görmek için <code>/catalogs</code> endpoint'ini kullanın.</p>
         </body>
         </html>
     `);
@@ -90,17 +71,19 @@ app.get('/products/:filename', async (req, res) => {
             }
             
             // Parse filename for logging
-            const parsed = parseFilename(filename);
+            const parsed = HTMLCleanupService.parseCatalogFilename(filename);
             if (parsed) {
                 console.log(`[ACCESS] ${filename} -> WhatsApp: ${parsed.whatsappNumber}, Session: ${parsed.sessionId}`);
-                
+
                 // Check file age (optional warning)
-                const ageMinutes = (Date.now() - parsed.timestamp) / (1000 * 60);
-                if (ageMinutes > 60) { // Warn if older than 1 hour
-                    console.warn(`[OLD FILE] ${filename} is ${Math.round(ageMinutes)} minutes old`);
+                if (parsed.timestamp) {
+                    const ageMinutes = (Date.now() - parsed.timestamp) / (1000 * 60);
+                    if (ageMinutes > retentionMinutes) {
+                        console.warn(`[OLD FILE] ${filename} is ${Math.round(ageMinutes)} minutes old`);
+                    }
                 }
             }
-            
+
             // Serve the static HTML file
             return res.sendFile(filePath);
         }
@@ -142,7 +125,7 @@ app.post('/select-product', express.json(), async (req, res) => {
         
         if (sessionId.startsWith('products_') && sessionId.endsWith('.html')) {
             // New filename format
-            const parsed = parseFilename(sessionId);
+            const parsed = HTMLCleanupService.parseCatalogFilename(sessionId);
             if (parsed) {
                 whatsappNumber = parsed.whatsappNumber;
                 console.log(`[FILENAME PARSE] Extracted WhatsApp: ${whatsappNumber}`);
@@ -153,7 +136,12 @@ app.post('/select-product', express.json(), async (req, res) => {
         } else {
             // Legacy fallback (shouldn't happen with new system)
             console.warn(`[LEGACY] Session ID not a filename: ${sessionId}`);
-            whatsappNumber = '905306897885@c.us'; // Default fallback
+            whatsappNumber = defaultWhatsappNumber;
+        }
+
+        if (!whatsappNumber) {
+            console.error('[PRODUCT SELECTION] WhatsApp number could not be determined');
+            return res.json({ success: false, error: 'WhatsApp numarası belirlenemedi' });
         }
         
         // Convert HTML product selection to ÜRÜN_SEÇİLDİ format for Swarm system
@@ -175,13 +163,14 @@ app.post('/select-product', express.json(), async (req, res) => {
                 const responseMessage = swarmResponse.data.response || swarmResponse.data.message || "Ürün seçimi başarılı";
                 
                 console.log(`[SWARM RESPONSE] ${whatsappNumber}: ${responseMessage.substring(0, 100)}...`);
-                console.log(`[SENDING TO WHATSAPP] URL: http://localhost:3001/send-message`);
+                const sendMessageUrl = `${whatsappWebhookUrl}/send-message`;
+                console.log(`[SENDING TO WHATSAPP] URL: ${sendMessageUrl}`);
                 console.log(`[SENDING TO WHATSAPP] To: ${whatsappNumber}`);
                 console.log(`[SENDING TO WHATSAPP] Message: ${responseMessage.substring(0, 200)}`);
-                
+
                 // WhatsApp'a mesaj gönder
                 try {
-                    const whatsappResponse = await axios.post('http://localhost:3001/send-message', {
+                    const whatsappResponse = await axios.post(sendMessageUrl, {
                         to: whatsappNumber,
                         message: responseMessage
                     });
@@ -205,9 +194,9 @@ app.post('/select-product', express.json(), async (req, res) => {
             
         } catch (swarmError) {
             console.error('[SWARM ERROR]', swarmError.message);
-            res.json({ 
-                success: false, 
-                error: 'Swarm sistemi yanıt veremedi: ' + swarmError.message 
+            res.json({
+                success: false,
+                error: 'Swarm sistemi yanıt veremedi: ' + swarmError.message
             });
         }
         
@@ -227,14 +216,34 @@ app.post('/cleanup/trigger', (req, res) => {
     res.json({ success: true, message: 'Manual cleanup triggered' });
 });
 
+// Catalog inspection endpoint
+app.get('/catalogs', async (req, res) => {
+    try {
+        const files = await cleanupService.listCatalogFiles();
+        res.json({
+            success: true,
+            retentionMinutes,
+            cleanupIntervalMinutes,
+            totalFiles: files.length,
+            files
+        });
+    } catch (error) {
+        console.error('[CATALOG LIST ERROR]', error.message);
+        res.status(500).json({ success: false, error: 'Kataloglar listelenemedi: ' + error.message });
+    }
+});
+
 // Health check
 app.get('/health', (req, res) => {
     const stats = cleanupService.getStats();
-    res.json({ 
-        status: 'OK', 
+    res.json({
+        status: 'OK',
         port: port,
         cleanup_running: stats.isRunning,
-        files_cleaned: stats.totalCleaned
+        files_cleaned: stats.totalCleaned,
+        last_run_at: stats.lastRunAt,
+        last_run_deleted: stats.lastRunDeleted,
+        last_run_error: stats.lastRunError
     });
 });
 

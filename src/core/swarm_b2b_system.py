@@ -317,41 +317,228 @@ def generate_product_html(products, query, html_filename):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ürün Listesi - {query}</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }}
-        .header {{ text-align: center; margin-bottom: 20px; color: #333; }}
-        .product {{ border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; background: #fff; cursor: pointer; }}
-        .product:hover {{ background: #f9f9f9; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .product-name {{ font-weight: bold; color: #2c5aa0; margin-bottom: 5px; }}
-        .product-code {{ color: #666; font-size: 0.9em; }}
-        .product-price {{ color: #d9534f; font-weight: bold; margin: 5px 0; }}
-        .product-stock {{ color: #5cb85c; font-size: 0.9em; }}
-        .out-of-stock {{ opacity: 0.6; }}
+        body {{
+            margin: 0;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(160deg, #1e3c72 0%, #2a5298 45%, #1e3c72 100%);
+            color: #1f2933;
+        }}
+
+        .page-wrapper {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px 48px;
+        }}
+
+        .container {{
+            width: 100%;
+            max-width: 860px;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(10, 22, 70, 0.18);
+            overflow: hidden;
+        }}
+
+        .header {{
+            background: linear-gradient(120deg, rgba(42, 82, 152, 0.95), rgba(30, 60, 114, 0.95));
+            color: #f8fafc;
+            padding: 36px 40px 28px;
+            text-align: left;
+        }}
+
+        .header h2 {{
+            margin: 0 0 12px;
+            font-size: 28px;
+            letter-spacing: 0.4px;
+        }}
+
+        .header p {{
+            margin: 4px 0;
+            font-size: 16px;
+            opacity: 0.92;
+        }}
+
+        .results-meta {{
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: rgba(248, 250, 252, 0.18);
+            font-size: 14px;
+            margin-top: 14px;
+        }}
+
+        .content {{
+            padding: 32px 40px 40px;
+            background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+        }}
+
+        .product-list {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }}
+
+        .product {{
+            position: relative;
+            border-radius: 20px;
+            padding: 22px 24px;
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            cursor: pointer;
+        }}
+
+        .product:hover {{
+            transform: translateY(-6px);
+            box-shadow: 0 20px 32px rgba(15, 23, 42, 0.12);
+        }}
+
+        .product-name {{
+            font-weight: 600;
+            color: #233876;
+            font-size: 18px;
+            margin-bottom: 8px;
+            line-height: 1.35;
+        }}
+
+        .product-code {{
+            color: #64748b;
+            font-size: 14px;
+            letter-spacing: 0.4px;
+        }}
+
+        .product-price {{
+            margin: 16px 0 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #16a34a;
+        }}
+
+        .product-stock {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #0f172a;
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(22, 163, 74, 0.12);
+        }}
+
+        .product-stock svg {{
+            width: 14px;
+            height: 14px;
+        }}
+
+        .out-of-stock {{
+            background: #f8fafc;
+            color: #475569;
+        }}
+
+        .out-of-stock .product-price {{
+            color: #ef4444;
+        }}
+
+        .out-of-stock .product-stock {{
+            background: rgba(239, 68, 68, 0.12);
+            color: #b91c1c;
+        }}
+
+        .out-of-stock .product-stock svg {{
+            transform: rotate(45deg);
+        }}
+
+        @media (max-width: 640px) {{
+            .container {{ border-radius: 18px; }}
+            .header {{ padding: 30px 24px; }}
+            .content {{ padding: 28px 24px 32px; }}
+            .product {{ padding: 20px; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h2>Urun Listesi</h2>
-            <p>Arama: "<strong>{query}</strong>"</p>
-            <p>Toplam {len(products)} ürün bulundu</p>
-        </div>
-        
-        {"".join([f'''
-            <div class="product {"out-of-stock" if p["stock"] <= 0 else ""}" onclick="selectProduct('{p["code"]}', '{p["name"]}', {p["price"]})">
-                <div class="product-name">{p["name"]}</div>
-                <div class="product-code">Kod: {p["code"]}</div>
-                <div class="product-price">{p["price"]} TL</div>
-                <div class="product-stock">Stok: {p["stock"]} adet</div>
+    <div class="page-wrapper">
+        <div class="container">
+            <div class="header">
+                <h2>Ürün Kataloğu</h2>
+                <p>Arama sonucu: <strong>{query}</strong></p>
+                <div class="results-meta">
+                    <span>🔍 {len(products)} ürün bulundu</span>
+                    <span>🕒 Güncelleme: {datetime.utcnow().strftime('%H:%M')}</span>
+                </div>
             </div>
-        ''' for p in products[:50]])}
+
+            <div class="content">
+                <div class="product-list">
+                    {"".join([f'''
+                        <div class="product {"out-of-stock" if p["stock"] <= 0 else ""}" onclick="selectProduct('{p["code"]}', '{p["name"]}', {p["price"]})">
+                            <div class="product-name">{p["name"]}</div>
+                            <div class="product-code">Kod: {p["code"]}</div>
+                            <div class="product-price">{p["price"]} TL</div>
+                            <div class="product-stock">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                {('Stok: ' + str(p["stock"]) + ' adet') if p["stock"] > 0 else 'Tükendi'}
+                            </div>
+                        </div>
+                    ''' for p in products[:50]])}
+                </div>
+            </div>
+        </div>
     </div>
     
     <script>
+        (function() {{
+            var returnTimeout;
+
+            function navigateBackToWhatsApp() {{
+                if (returnTimeout) {{
+                    clearTimeout(returnTimeout);
+                }}
+
+                try {{
+                    window.close();
+                }} catch (error) {{
+                    console.log('Window close not permitted');
+                }}
+
+                returnTimeout = setTimeout(function() {{
+                    if (document.referrer && document.referrer.includes('whatsapp')) {{
+                        window.location.href = document.referrer;
+                    }} else {{
+                        window.location.href = 'whatsapp://';
+                        setTimeout(function() {{
+                            window.location.href = 'https://wa.me/';
+                        }}, 400);
+                    }}
+                }}, 80);
+            }}
+
+            window.addEventListener('pageshow', function() {{
+                try {{
+                    history.replaceState({{ catalog: true }}, document.title, window.location.href);
+                    history.pushState({{ catalog: true }}, document.title, window.location.href);
+                }} catch (err) {{
+                    console.log('History API unavailable');
+                }}
+            }});
+
+            window.addEventListener('popstate', function() {{
+                navigateBackToWhatsApp();
+            }});
+
+            window.returnToWhatsApp = navigateBackToWhatsApp;
+        }})();
+
         function selectProduct(code, name, price) {{
             // Create WhatsApp message
             var whatsappMsg = "URUN_SECILDI: " + code + " - " + name + " - " + price + " TL";
-            
+
             // Try to send via fetch
             fetch('/select-product', {{
                 method: 'POST',
@@ -386,98 +573,79 @@ def generate_product_html(products, query, html_filename):
             overlay.style.left = '0';
             overlay.style.width = '100%';
             overlay.style.height = '100%';
-            overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.68)';
             overlay.style.zIndex = '10000';
             overlay.style.display = 'flex';
             overlay.style.alignItems = 'center';
             overlay.style.justifyContent = 'center';
             overlay.style.opacity = '0';
             overlay.style.transition = 'opacity 0.3s ease';
-            
+
             // Create popup box
             var popup = document.createElement('div');
-            popup.style.backgroundColor = 'white';
-            popup.style.borderRadius = '12px';
-            popup.style.padding = '30px';
-            popup.style.maxWidth = '350px';
+            popup.style.backgroundColor = '#ffffff';
+            popup.style.borderRadius = '18px';
+            popup.style.padding = '36px 28px';
+            popup.style.maxWidth = '360px';
             popup.style.width = '90%';
             popup.style.textAlign = 'center';
-            popup.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)';
+            popup.style.boxShadow = '0 18px 42px rgba(15,23,42,0.26)';
             popup.style.transform = 'scale(0.9)';
             popup.style.transition = 'transform 0.3s ease';
-            
+
             // Create success icon
             var icon = document.createElement('div');
-            icon.innerHTML = 'OK';
-            icon.style.fontSize = '48px';
-            icon.style.marginBottom = '15px';
-            
+            icon.innerHTML = '✅';
+            icon.style.fontSize = '58px';
+            icon.style.marginBottom = '18px';
+
             // Create title
             var title = document.createElement('h3');
             title.innerHTML = 'Ürün Seçildi!';
-            title.style.color = '#2c5aa0';
-            title.style.margin = '0 0 15px 0';
-            title.style.fontSize = '22px';
-            title.style.fontWeight = 'bold';
-            
+            title.style.color = '#1f3d7a';
+            title.style.margin = '0 0 18px 0';
+            title.style.fontSize = '24px';
+            title.style.fontWeight = '700';
+
             // Create message
             var message = document.createElement('p');
-            message.innerHTML = '👆 Back tuşuna basarak<br>WhatsApp\\'a dönebilirsiniz';
-            message.style.color = '#666';
-            message.style.margin = '0 0 20px 0';
-            message.style.fontSize = '16px';
-            message.style.lineHeight = '1.5';
-            
-            // Create close button
-            var closeBtn = document.createElement('button');
-            closeBtn.innerHTML = 'Tamam';
-            closeBtn.style.backgroundColor = '#2c5aa0';
-            closeBtn.style.color = 'white';
-            closeBtn.style.border = 'none';
-            closeBtn.style.borderRadius = '6px';
-            closeBtn.style.padding = '12px 24px';
-            closeBtn.style.fontSize = '16px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontWeight = 'bold';
-            closeBtn.style.transition = 'background-color 0.2s ease';
-            
-            // Hover effect for button
-            closeBtn.onmouseover = function() {{ this.style.backgroundColor = '#1a4480'; }};
-            closeBtn.onmouseout = function() {{ this.style.backgroundColor = '#2c5aa0'; }};
-            
+            message.innerHTML = '👆 Geri tuşuna bastığınızda WhatsApp\'a dönecek ve bu sekme kapanacak.';
+            message.style.color = '#475569';
+            message.style.margin = '0';
+            message.style.fontSize = '17px';
+            message.style.lineHeight = '1.6';
+
             // Assemble popup
             popup.appendChild(icon);
             popup.appendChild(title);
             popup.appendChild(message);
-            popup.appendChild(closeBtn);
             overlay.appendChild(popup);
-            
+
             // Add to page
             document.body.appendChild(overlay);
-            
+
             // Animate in
             setTimeout(function() {{
                 overlay.style.opacity = '1';
                 popup.style.transform = 'scale(1)';
             }}, 50);
-            
-            // Close button functionality
-            closeBtn.onclick = function() {{
-                overlay.style.opacity = '0';
-                popup.style.transform = 'scale(0.9)';
-                setTimeout(function() {{
-                    if (document.body.contains(overlay)) {{
-                        document.body.removeChild(overlay);
-                    }}
-                }}, 300);
-            }};
-            
+
             // Close on overlay click
             overlay.onclick = function(e) {{
                 if (e.target === overlay) {{
-                    closeBtn.onclick();
+                    overlay.style.opacity = '0';
+                    popup.style.transform = 'scale(0.9)';
+                    setTimeout(function() {{
+                        if (document.body.contains(overlay)) {{
+                            document.body.removeChild(overlay);
+                        }}
+                    }}, 300);
                 }}
             }};
+
+            setTimeout(function() {{
+                overlay.onclick({{ target: overlay }});
+            }}, 3500);
         }}
     </script>
 </body>
