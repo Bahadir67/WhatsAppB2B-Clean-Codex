@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
+import json
 
 from swarm_config import client
 from swarm_agents import intent_analyzer
@@ -171,6 +172,30 @@ class SwarmB2BSystem:
                 "users": list(self.conversation_memory.keys())
             }
     
+    def _try_handle_manual_order_history(self, message: str, whatsapp_number: str):
+        """Parse assistant JSON responses to fetch order history directly."""
+        if not isinstance(message, str):
+            return None
+        stripped = message.strip()
+        if not stripped or stripped[0] not in '{[':
+            return None
+        try:
+            payload = json.loads(stripped)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+        if isinstance(payload, dict) and 'start_date' in payload and 'end_date' in payload:
+            from swarm_orders import get_order_history
+            start_date = payload.get('start_date')
+            end_date = payload.get('end_date')
+            limit = payload.get('limit')
+            try:
+                whatsapp_formatted = whatsapp_number if whatsapp_number.endswith('@c.us') else whatsapp_number + '@c.us'
+                return get_order_history(whatsapp_formatted, timeframe_text=None, limit=limit, start_date=start_date, end_date=end_date)
+            except Exception as exc:
+                return f"[ERROR] Tarih aralığı işlenemedi: {exc}"
+        return None
+
     def process_message(self, customer_message: str, whatsapp_number: str) -> str:
         """Ana mesaj işleme fonksiyonu - Conversation Memory enabled"""
 
@@ -246,6 +271,10 @@ class SwarmB2BSystem:
             # Hiçbir şey bulamazsan son mesajı al
             if not final_message:
                 final_message = response.messages[-1]["content"]
+
+            manual_override = self._try_handle_manual_order_history(final_message, whatsapp_number)
+            if manual_override:
+                final_message = manual_override
 
             # Add assistant response to conversation memory
             self.add_message_to_memory(whatsapp_number, "assistant", final_message)

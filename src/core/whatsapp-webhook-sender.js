@@ -4,9 +4,36 @@ const axios = require('axios');
 const express = require('express');
 const config = require('./config');
 
+const TYPING_INTERVAL_MS = parseInt(process.env.WHATSAPP_TYPING_INTERVAL_MS, 10) || 6000;
+
 // Express server for receiving replies from Swarm system
 const app = express();
 app.use(express.json());
+
+async function runWithTypingIndicator(chatId, action) {
+    let intervalId;
+    const sendPresence = async (state) => {
+        try {
+            await client.sendPresenceUpdate(state, chatId);
+        } catch (err) {
+            console.warn('[Typing] Presence update failed:', state, err.message);
+        }
+    };
+
+    await sendPresence('composing');
+    intervalId = setInterval(() => {
+        sendPresence('composing');
+    }, TYPING_INTERVAL_MS);
+
+    try {
+        return await action();
+    } finally {
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        await sendPresence('paused');
+    }
+}
 
 // WhatsApp Client oluştur
 const client = new Client({
@@ -58,32 +85,33 @@ client.on('message', async (message) => {
         }
         
         console.log(`[Swarm] Sending - userId: ${userId}, message: ${body}`);
-        
-        try {
-            // Call OpenAI Swarm 5-Agent system
-            const response = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
-                message: body,
-                whatsapp_number: userId
-            });
-            
-            if (response.data.success) {
-                console.log('[DEBUG] Full response data:', JSON.stringify(response.data, null, 2));
-                const swarmResponse = response.data.response || response.data.message || "Yanıt alınamadı";
-                
-                // Send the response directly without any formatting
-                // WhatsApp will automatically make URLs clickable
-                await client.sendMessage(message.from, swarmResponse);
-                
-                console.log(`[Swarm Yanıt] ${userId}: ${swarmResponse.substring(0, 100)}...`);
-            } else {
-                throw new Error(response.data.error || 'Swarm system error');
+
+        await runWithTypingIndicator(message.from, async () => {
+            try {
+                // Call OpenAI Swarm 5-Agent system
+                const response = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
+                    message: body,
+                    whatsapp_number: userId
+                });
+
+                if (response.data.success) {
+                    console.log('[DEBUG] Full response data:', JSON.stringify(response.data, null, 2));
+                    const swarmResponse = response.data.response || response.data.message || "Yanıt alınamadı";
+
+                    // Send the response directly without any formatting
+                    // WhatsApp will automatically make URLs clickable
+                    await client.sendMessage(message.from, swarmResponse);
+
+                    console.log(`[Swarm Yanıt] ${userId}: ${swarmResponse.substring(0, 100)}...`);
+                } else {
+                    throw new Error(response.data.error || 'Swarm system error');
+                }
+            } catch (error) {
+                console.error('[Swarm Error]', error);
+                await client.sendMessage(message.from, '❌ Sistem hatası. Lütfen tekrar deneyin.');
             }
-            
-        } catch (error) {
-            console.error('[Swarm Error]', error);
-            await client.sendMessage(message.from, '❌ Sistem hatası. Lütfen tekrar deneyin.');
-        }
-        
+        });
+
     } catch (error) {
         console.error('[Hata] Mesaj işlenemedi:', error.message);
         await client.sendMessage(message.from, '❌ Sistem hatası. Lütfen tekrar deneyin.');

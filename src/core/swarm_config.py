@@ -39,4 +39,7 @@ _openrouter_client = openai.OpenAI(
 
 client = Swarm(client=_openrouter_client)
 
+# Expose raw client for utility helpers that need direct completions (e.g., timeframe parsing)
+openrouter_client = _openrouter_client
+
 print(f"[Swarm] Model: {OPENROUTER_MODEL}")

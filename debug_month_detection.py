@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'core'))
 
 from swarm_orders import _resolve_order_history_timeframe, _normalize_timeframe_text, _MONTH_KEYWORDS
-from datetime import datetime
+from swarm_orders import _llm_resolve_order_history_timeframe
 
 def test_month_detection():
     print("=== September Month Detection Debug ===\n")
@@ -47,5 +47,35 @@ def test_month_detection():
             print(f"  ERROR: {e}")
         print()
 
+def test_llm_timeframe_parsing():
+    print("=== LLM Timeframe Parsing Debug ===\n")
+
+    examples = [
+        "geçen cuma günü sparişler görebilir miyim?",
+        "geçen hafta cuma siparişlerimi listele",
+        "son 2 hafta siparişler",
+        "temmuz başındaki siparişler",
+    ]
+
+    for query in examples:
+        print(f"Query: {query}")
+        result = _llm_resolve_order_history_timeframe(query)
+        if result:
+            start, end, label, note = result
+            print(f"  LLM Start: {start}")
+            print(f"  LLM End:   {end}")
+            print(f"  Label:     {label}")
+            print(f"  Note:      {note}")
+        else:
+            print("  LLM parser returned None, falling back to deterministic logic")
+            start, end, label, note = _resolve_order_history_timeframe(query)
+            print(f"  Fallback Start: {start}")
+            print(f"  Fallback End:   {end}")
+            print(f"  Label:          {label}")
+            if note:
+                print(f"  Note:           {note}")
+        print()
+
 if __name__ == "__main__":
     test_month_detection()
+    test_llm_timeframe_parsing()

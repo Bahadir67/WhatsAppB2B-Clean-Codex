@@ -7,6 +7,7 @@ import time
 import calendar
 from datetime import datetime, timedelta
 import re
+import json
 from typing import Any, Dict, List, Tuple, TypedDict
 
 from database_tools_fixed import db
@@ -70,6 +71,32 @@ for _month, _synonyms in _MONTH_SYNONYM_MAP.items():
         _MONTH_KEYWORDS[normalized] = _month
 
 
+def _normalize_whatsapp_identifier(value: str | None) -> str | None:
+    """Ensure WhatsApp identifiers use the @c.us chat ID format."""
+    if not value:
+        return value
+    raw = str(value).strip()
+    if not raw:
+        return raw
+    if raw.endswith('@c.us'):
+        return raw
+
+    digits = re.sub(r'\D', '', raw)
+    if not digits:
+        return raw
+
+    if digits.startswith('90') and len(digits) >= 11:
+        formatted = digits
+    elif digits.startswith('0') and len(digits) >= 11:
+        formatted = '9' + digits
+    elif digits.startswith('5') and len(digits) >= 10:
+        formatted = '90' + digits
+    else:
+        formatted = digits
+
+    return formatted + '@c.us'
+
+
 def _normalize_timeframe_text(value: str) -> str:
     replacements = {
         "ı": "i",
@@ -89,8 +116,34 @@ def _normalize_timeframe_text(value: str) -> str:
     normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
     normalized = re.sub(r'\s+', ' ', normalized)
     normalized = re.sub(r'(^|\s)on(\s+\d+\s+gun)', lambda m: m.group(1) + 'son' + m.group(2), normalized)
+    normalized = re.sub(r'(\d+)\s+hafta\s+once(?:ki)?', r'son \1 hafta', normalized)
     normalized = re.sub(r'son(\d+)', r'son \1', normalized)
     return normalized.strip()
+
+
+
+def _parse_user_date(value: str, *, is_start: bool) -> datetime:
+    """Parse user-provided date string into datetime."""
+    if value is None:
+        raise ValueError('Tarih değeri bulunamadı')
+    value_str = str(value).strip()
+    if not value_str:
+        raise ValueError('Boş tarih değeri')
+
+    try:
+        if len(value_str) == 10:
+            base = datetime.strptime(value_str, '%Y-%m-%d')
+        else:
+            base = datetime.fromisoformat(value_str)
+    except ValueError as exc:
+        raise ValueError(f"Geçersiz tarih formatı: {value_str}") from exc
+
+    if is_start:
+        return base.replace(hour=0, minute=0, second=0, microsecond=0)
+    if len(value_str) == 10:
+        return base.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return base
+
 
 
 def _resolve_order_history_timeframe(timeframe_text: str | None):
@@ -151,6 +204,23 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         label = f"Son {weeks} Hafta"
         return start_range, default_end, label, None
 
+    if any(keyword in normalized for keyword in ['bugun', 'bugunku', 'bu gun']):
+        start_range = datetime(now.year, now.month, now.day)
+        label = 'Bugün'
+        return start_range, default_end, label, None
+
+    if any(keyword in normalized for keyword in ['dun', 'dunku', 'gecen gun']):
+        yesterday = datetime(now.year, now.month, now.day) - timedelta(days=1)
+        start_range = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_range = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+        label = 'Dün'
+        return start_range, end_range, label, None
+
+    if 'son ay' in normalized or 'son bir ay' in normalized or 'son 1 ay' in normalized:
+        start_range = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        label = 'Son 1 Ay'
+        return start_range, default_end, label, None
+
     month_window_match = re.search(r'son\s+(\d+)\s+ay', normalized)
     if month_window_match:
         months = max(1, int(month_window_match.group(1)))
@@ -194,6 +264,135 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
 
     fallback_note = f"Belirtilen zaman aralığı ('{original}') anlaşılamadı. Varsayılan olarak bu ay listelendi."
     return default_start, default_end, default_label, fallback_note
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Attempt to find the first JSON object within a model response."""
+    if not text:
+        return None
+    text = text.strip()
+    if not text:
+        return None
+    if text.startswith('{') and text.endswith('}'):
+        return text
+    stack = 0
+    start_idx: int | None = None
+    for idx, char in enumerate(text):
+        if char == '{':
+            if stack == 0:
+                start_idx = idx
+            stack += 1
+        elif char == '}':
+            if stack:
+                stack -= 1
+                if stack == 0 and start_idx is not None:
+                    return text[start_idx:idx + 1]
+    return None
+
+
+def _llm_resolve_order_history_timeframe(timeframe_text: str | None):
+    """Resolve natural language timeframe via LLM; returns tuple or None on failure."""
+    if timeframe_text is None:
+        return None
+    if isinstance(timeframe_text, str):
+        query = timeframe_text.strip()
+        if not query:
+            return None
+        if query.isdigit():
+            return None
+    else:
+        return None
+
+    try:
+        from swarm_config import openrouter_client, OPENROUTER_MODEL
+    except ImportError:
+        print('[LLM TIMEFRAME] swarm_config import edilemedi')
+        return None
+
+    if not openrouter_client:
+        print('[LLM TIMEFRAME] OpenRouter client mevcut değil')
+        return None
+
+    reference_now = datetime.now()
+    system_prompt = (
+        'You are a date-range parser for a Turkish B2B order history system. '
+        f"Reference datetime is {reference_now.strftime('%Y-%m-%dT%H:%M:%S')}. "
+        'Interpret the customer message and respond with ONLY a JSON object containing '
+        'start_date, end_date, label, confidence, note. Use ISO 8601 format. '
+        'For single-day requests set start_date to 00:00:00 and end_date to 23:59:59. '
+        'If unsure set confidence to 0. '
+        'All JSON values must be written in Turkish (use short labels like "Geçen Cuma" and brief Turkish notes). '
+        'Return strictly JSON with no extra text.'
+    )
+    user_prompt = (
+        "Customer timeframe request:\n"
+        f"{query}\n\n"
+        "Return JSON only."
+    )
+
+    try:
+        completion = openrouter_client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+        )
+    except Exception as exc:
+        print(f'[LLM TIMEFRAME] OpenRouter hatası: {exc}')
+        return None
+
+    try:
+        content = (completion.choices[0].message.content or '').strip()
+    except (AttributeError, IndexError):
+        print('[LLM TIMEFRAME] Beklenmeyen LLM yanıt formatı')
+        return None
+
+    json_payload = _extract_first_json_object(content)
+    if not json_payload:
+        print(f"[LLM TIMEFRAME] JSON bulunamadı: {content[:120]}")
+        return None
+
+    try:
+        data = json.loads(json_payload)
+    except json.JSONDecodeError as exc:
+        print(f'[LLM TIMEFRAME] JSON decode hatası: {exc}')
+        return None
+
+    start_raw = data.get('start_date') or data.get('start')
+    end_raw = data.get('end_date') or data.get('end')
+    label = data.get('label') or data.get('summary') or query
+    note = data.get('note') or data.get('explanation')
+
+    if not start_raw or not end_raw:
+        print('[LLM TIMEFRAME] start_date veya end_date yok')
+        return None
+
+    try:
+        start_dt = _parse_user_date(start_raw, is_start=True)
+        end_dt = _parse_user_date(end_raw, is_start=False)
+    except ValueError as exc:
+        print(f'[LLM TIMEFRAME] Tarih parse hatası: {exc}')
+        return None
+
+    if start_dt > end_dt:
+        print(f"[LLM TIMEFRAME] Başlangıç bitişten büyük: {query}")
+        return None
+
+    confidence = data.get('confidence')
+    confidence_value = 1.0
+    if isinstance(confidence, (int, float)):
+        confidence_value = float(confidence)
+    elif isinstance(confidence, str):
+        conf_map = {'high': 0.9, 'medium': 0.6, 'low': 0.3}
+        confidence_value = conf_map.get(confidence.lower(), 1.0)
+    if confidence_value < 0.5:
+        print(f"[LLM TIMEFRAME] Düşük güven ({confidence_value}) - fallback")
+        return None
+
+    note_text = str(note) if note else 'Zaman aralığı yapay zeka tarafından yorumlandı.'
+    return start_dt, end_dt, str(label), note_text
 
 def handle_product_selection(whatsapp_number: str, selection_message: str) -> str:
     """Handle ÜRÜN_SEÇİLDİ intent - extract product details and ask for quantity"""
@@ -401,27 +600,67 @@ def create_order_confirmation_message(order_number: str, order_data: dict, total
 
 
 
-def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, limit: int | None = None) -> str:
+def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, limit: int | None = None, start_date: str | None = None, end_date: str | None = None) -> str:
     """Müşterinin sipariş geçmişini HTML tablo olarak getir."""
     try:
+        normalized_whatsapp = _normalize_whatsapp_identifier(whatsapp_number)
+        whatsapp_lookup = normalized_whatsapp or (str(whatsapp_number).strip() if whatsapp_number is not None else '')
+        display_whatsapp = whatsapp_lookup
+
+        if isinstance(limit, str):
+            limit_str = limit.strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+
         if isinstance(timeframe_text, int) and limit is None:
             limit = timeframe_text
             timeframe_text = None
+        elif isinstance(timeframe_text, str):
+            timeframe_digits = timeframe_text.strip()
+            if timeframe_digits.isdigit() and limit is None:
+                limit = int(timeframe_digits)
+                timeframe_text = None
 
-        start_dt, end_dt, timeframe_label, timeframe_note = _resolve_order_history_timeframe(timeframe_text)
+        if isinstance(limit, int) and limit <= 0:
+            limit = None
+
+        # If timeframe_text describes a date range (non-numeric), fetch full results
+        if isinstance(timeframe_text, str):
+            stripped_timeframe = timeframe_text.strip().lower()
+            if stripped_timeframe and not stripped_timeframe.isdigit():
+                limit = None
+
+        if start_date or end_date:
+            if not start_date or not end_date:
+                return "[ERROR] start_date ve end_date birlikte gönderilmelidir."
+            try:
+                start_dt = _parse_user_date(start_date, is_start=True)
+                end_dt = _parse_user_date(end_date, is_start=False)
+            except ValueError as exc:
+                return f"[ERROR] Tarih aralığı parse edilemedi: {exc}"
+            if start_dt > end_dt:
+                return "[ERROR] start_date end_date değerinden büyük olamaz."
+            timeframe_label = f"{start_dt.strftime('%d/%m/%Y')} - {end_dt.strftime('%d/%m/%Y')}"
+            timeframe_note = None
+        else:
+            llm_result = _llm_resolve_order_history_timeframe(timeframe_text)
+            if llm_result:
+                start_dt, end_dt, timeframe_label, timeframe_note = llm_result
+            else:
+                start_dt, end_dt, timeframe_label, timeframe_note = _resolve_order_history_timeframe(timeframe_text)
 
         cursor = db.connection.cursor()
         query = (
-            "SELECT o.order_number, o.status, o.total_amount, o.created_at, "
+            "SELECT o.order_number, o.status, o.total_amount, "
+            "COALESCE(o.order_date, o.created_at) AS order_timestamp, "
             "COUNT(oi.id) AS item_count "
             "FROM orders o "
             "LEFT JOIN order_items oi ON o.id = oi.order_id "
             "WHERE o.whatsapp_number = %s "
-            "AND o.created_at BETWEEN %s AND %s "
-            "GROUP BY o.id, o.order_number, o.status, o.total_amount, o.created_at "
-            "ORDER BY o.created_at DESC"
+            "AND COALESCE(o.order_date, o.created_at) BETWEEN %s AND %s "
+            "GROUP BY o.id, o.order_number, o.status, o.total_amount, COALESCE(o.order_date, o.created_at) "
+            "ORDER BY COALESCE(o.order_date, o.created_at) DESC"
         )
-        params = [whatsapp_number, start_dt, end_dt]
+        params = [whatsapp_lookup, start_dt, end_dt]
 
         if limit and limit > 0:
             query += " LIMIT %s"
@@ -438,14 +677,14 @@ def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, l
             return message
 
         orders_data = []
-        for order_num, status, total, date, item_count in orders:
+        for order_num, status, total, order_timestamp, item_count in orders:
             status_tr = {
                 'confirmed': 'Onaylandı',
                 'draft': 'Taslak',
                 'cancelled': 'İptal Edildi'
             }.get(status.lower(), status)
 
-            date_str = date.strftime('%d/%m/%Y %H:%M') if date else 'Bilinmiyor'
+            date_str = order_timestamp.strftime('%d/%m/%Y %H:%M') if order_timestamp else 'Bilinmiyor'
 
             orders_data.append({
                 'order_number': order_num,
@@ -457,13 +696,13 @@ def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, l
             })
 
         timestamp = str(int(time.time() * 1000))
-        whatsapp_clean = whatsapp_number.replace('@c.us', '').replace('+', '')
+        whatsapp_clean = (display_whatsapp or '').replace('@c.us', '').replace('+', '')
         html_filename = f"order_history_{whatsapp_clean}_{timestamp}.html"
         html_path = f"{os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')}/{html_filename}"
 
         html_content = swarm_html.generate_order_history_html(
             orders_data,
-            whatsapp_number,
+            display_whatsapp,
             html_filename,
             timeframe_label,
             timeframe_note
@@ -497,6 +736,7 @@ def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, l
 def get_all_orders_for_customer(whatsapp_number: str) -> list:
     """Get all orders for a customer with items"""
     try:
+        lookup_number = _normalize_whatsapp_identifier(whatsapp_number) or (str(whatsapp_number).strip() if whatsapp_number is not None else '')
         cursor = db.connection.cursor()
 
         # Get all orders
@@ -505,7 +745,7 @@ def get_all_orders_for_customer(whatsapp_number: str) -> list:
             FROM orders
             WHERE whatsapp_number = %s
             ORDER BY created_at DESC
-        """, [whatsapp_number])
+        """, [lookup_number])
 
         orders = cursor.fetchall()
 
@@ -558,7 +798,7 @@ def show_order_details_html(whatsapp_number: str) -> str:
 
         # Generate HTML
         timestamp = str(int(time.time() * 1000))
-        whatsapp_clean = whatsapp_number.replace('@c.us', '').replace('+', '')
+        whatsapp_clean = (display_whatsapp or '').replace('@c.us', '').replace('+', '')
         html_filename = f"orders_{whatsapp_clean}_{timestamp}.html"
         html_path = f"{os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')}/{html_filename}"
 
@@ -591,6 +831,7 @@ def show_order_details_html(whatsapp_number: str) -> str:
 def get_order_details(whatsapp_number: str, order_number: str) -> str:
     """Belirli sipariş numarasının detaylarını getir"""
     try:
+        lookup_number = _normalize_whatsapp_identifier(whatsapp_number) or (str(whatsapp_number).strip() if whatsapp_number is not None else '')
         cursor = db.connection.cursor()
         
         # Sipariş bilgilerini al
@@ -598,7 +839,7 @@ def get_order_details(whatsapp_number: str, order_number: str) -> str:
             SELECT id, order_number, status, total_amount, created_at
             FROM orders 
             WHERE whatsapp_number = %s AND order_number = %s
-        """, [whatsapp_number, order_number])
+        """, [lookup_number, order_number])
         
         order = cursor.fetchone()
         if not order:

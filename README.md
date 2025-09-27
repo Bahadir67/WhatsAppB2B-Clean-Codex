@@ -1,354 +1,166 @@
-# WhatsApp B2B AI Satış Asistanı - OpenAI Swarm Edition
+# WhatsApp B2B AI Satış Asistanı (OpenAI Swarm)
 
-## 🚀 Proje Özeti
-OpenAI Swarm Multi-Agent sistemi ile WhatsApp üzerinden B2B ürün sorgulama, sipariş yönetimi ve satış desteği sağlayan akıllı asistan.
-
-## 🔄 Hızlı Kurulum (Clone & Run)
-
-```bash
-# 1. Projeyi klonla
-git clone https://github.com/Bahadir67/B2B_Agent.git
-cd B2B_Agent
-
-# 2. Python sanal ortam oluştur (önerilen)
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
-
-# 3. Python bağımlılıkları yükle
-pip install -r requirements.txt
-
-# 4. Node.js bağımlılıkları yükle
-npm install
-
-# 5. Environment dosyasını ayarla
-copy .env.example .env
-# .env dosyasını düzenle (API keys, DB credentials)
-
-# 6. PostgreSQL veritabanını hazırla
-psql -U postgres -c "CREATE DATABASE eticaret_db;"
-# SQL migration'ları çalıştır:
-psql -U postgres -d eticaret_db -f migrations/001_create_order_tables.sql
-psql -U postgres -d eticaret_db -f migrations/002_remove_cart_system.sql
-psql -U postgres -d eticaret_db -f migrations/003_valve_bul_extras.sql
-
-# 7. Servisleri başlat
-start_services.bat  # Windows
-# bash start_services.sh  # Linux/Mac (yakında)
-```
-
-## 🏗️ Sistem Mimarisi
-
-```
-WhatsApp → WhatsApp Bot → OpenAI Swarm System → PostgreSQL → Response
-             (3001)           (3007)
-                                ↓
-                    5-Agent Multi-Agent Processing
-                    ┌─────────────────────────────────┐
-                    │ Intent Analyzer                 │
-                    │ Product Specialist              │
-                    │ Sales Expert                    │
-                    │ Order Manager                   │
-                    │ Technical Support               │
-                    └─────────────────────────────────┘
-```
-### Çekirdek Python Modülleri
-
-- `src/core/swarm_config.py`: .env yükleme, OpenRouter istemcisi ve Swarm ayarları.
-- `src/core/swarm_runtime.py`: `SwarmB2BSystem` sınıfı, hafıza yönetimi ve OpenRouter çağrıları.
-- `src/core/swarm_agents.py`: Intent Analyzer ile uzman ajan tanımları ve handoff yardımcıları.
-- `src/core/swarm_context.py`: WhatsApp oturumu, miktar tespiti ve çoklu sipariş algılayıcıları.
-- `src/core/swarm_orders.py`: Sipariş kayıt/iptal yardımcıları, stok doğrulaması ve onay mesajları.
-- `src/core/swarm_search.py`: Ürün arama araçları, katalog oturumu kaydı ve stok kontrolleri.
-- `src/core/swarm_html.py`: Katalog ve sipariş HTML şablon üreticileri.
-- `src/core/swarm_api.py`: Flask endpoint'leri (`/process-message`, `/select-product`, vb.).
-
-
-
-## ✨ Özellikler
-
-### 1. OpenAI Swarm Multi-Agent Sistemi
-- **Intent Analyzer Agent**: Müşteri mesajlarını kategorilendirme ve yönlendirme
-- **Product Specialist Agent**: Akıllı ürün arama, filtreleme ve listeleme
-- **Sales Expert Agent**: Satış desteği, sipariş geçmişi ve müşteri hizmetleri
-- **Order Manager Agent**: Sipariş yönetimi, sepet işlemleri ve onay süreçleri
-- **Technical Support Agent**: Teknik sorular ve ürün detayları
-
-### 2. Akıllı Ürün Arama
-- Çap/Strok/Uzunluk parametreleri ile filtreleme
-- Ekstra parametreler (manyetik, yastık, hidrolik, ISO)
-- Duplicate kayıt yönetimi
-- PostgreSQL veritabanı entegrasyonu
-- Intent-based akıllı arama
-
-### 3. Web Tabanlı Ürün Listesi
-- Modern responsive tasarım
-- Tıklanabilir ürün kartları
-- Arama ve filtreleme
-- Session bazlı saklama
-- Otomatik Cloudflare tunnel linki
-- Saatlik HTML dosya temizliği (varsayılan 1 saatten eski kataloglar kaldırılır)
-- `/catalogs` endpoint'i ile aktif katalogları ve yaşlarını inceleyebilme
-
-### 4. Gelişmiş Sipariş Sistemi
-- Ürün seçimi algılama
-- Sepet yönetimi (ekleme/çıkarma/güncelleme)
-- Miktar ve stok kontrolü
-- Otomatik toplam hesaplama
-- Sipariş onay ve kaydetme
-- Sipariş geçmişi sorgulama
-
-## 🛠️ Kurulum
-
-### Gereksinimler
-- Python 3.8+
-- Node.js 18+
-- PostgreSQL
-- OpenAI API anahtarı
-
-### Adımlar
-
-1. **Python bağımlılıklarını yükleyin:**
-```bash
-pip install openai-swarm flask psycopg2-binary python-dotenv
-```
-
-2. **Node.js bağımlılıklarını yükleyin:**
-```bash
-npm install
-```
-
-3. **Environment değişkenlerini ayarlayın:**
-```bash
-cp .env.example .env
-# .env dosyasını düzenleyin
-```
-
-4. **Veritabanını hazırlayın:**
-```sql
-CREATE DATABASE eticaret_db;
--- SQL schema'yı import edin (products_semantic, orders, order_items tabloları)
-```
-
-5. **Servisleri başlatın:**
-```bash
-# Terminal 1 - OpenAI Swarm System
-python swarm_b2b_system.py
-
-# Terminal 2 - WhatsApp Bot
-node whatsapp-webhook-sender.js
-
-# Terminal 3 - Ürün listesi sunucusu
-node src/core/product-list-server-v2.js
-
-# Terminal 4 (isteğe bağlı) - Cloudflare Tunnel
-./cloudflared.exe tunnel --url http://localhost:3007
-```
-
-## 📱 Kullanım
-
-### WhatsApp Komutları
-
-#### Sistem Durumu
-```
-/status  - Sistem durumu ve aktif agent bilgisi
-```
-
-#### Ürün Arama (Otomatik Agent Routing)
-```
-"100 çap 200 strok silindir var mı?"
-"hidrolkik silindir"
-"ISO 32x160 pnömatik silindir"
-```
-
-#### Sipariş İşlemleri
-```
-"sipariş vermek istiyorum"
-"sepetimi göster"
-"sipariş geçmişim"
-"siparişimi iptal et"
-```
-
-#### Müşteri Hizmetleri
-```
-"yardım"
-"teknik destek"
-"fiyat bilgisi"
-```
-
-### Operasyon Araçları
-
-- `GET /catalogs`: Aktif ürün kataloglarının listesini JSON formatında döndürür. Her kayıt dosya adı, WhatsApp numarası, seans kimliği,
-  son değiştirilme tarihi, boyutu ve temizleme eşiğine göre bayat (stale) olup olmadığı bilgisini içerir. Bu sayede manuel paylaşılmış
-  linklerin hala geçerli olup olmadığını hızla kontrol edebilirsiniz.
-
-## 🔧 Konfigürasyon
-
-### Environment Değişkenleri (.env)
-```env
-# OpenAI API
-OPENAI_API_KEY=your_openai_key_here
-
-# WhatsApp
-WHATSAPP_PHONE=905306897885
-WHATSAPP_WEBHOOK_URL=http://localhost:3001
-
-# Server Ports
-ORCHESTRATOR_PORT=3000
-WHATSAPP_WEBHOOK_PORT=3001
-PRODUCT_SERVER_PORT=3005
-CUSTOMER_AGENT_PORT=3003
-SWARM_SERVER_PORT=3007
-
-# Catalog Cleanup
-PRODUCT_PAGE_RETENTION_MINUTES=60
-PRODUCT_PAGE_CLEANUP_INTERVAL_MINUTES=60
-
-# CloudFlare Tunnel
-TUNNEL_URL=https://your-tunnel-url.trycloudflare.com
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=eticaret_db
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
-
-### Portlar
-- `WHATSAPP_WEBHOOK_URL` (varsayılan `http://localhost:3001`): WhatsApp Reply Server'a gönderilecek temel URL.
-- `WHATSAPP_WEBHOOK_PORT` (varsayılan 3001): WhatsApp Reply Server
-- `PRODUCT_SERVER_PORT` (varsayılan 3005): Ürün kataloğu sunucusu
-- `PRODUCT_PAGE_RETENTION_MINUTES` (varsayılan 60): Ürün kataloglarının disk üzerinde tutulacağı dakika cinsinden süre
-- `PRODUCT_PAGE_CLEANUP_INTERVAL_MINUTES` (varsayılan 60): Temizlik servisinin çalışma sıklığı
-- `SWARM_SERVER_PORT` (varsayılan 3007): OpenAI Swarm Multi-Agent System
-- `5678`: n8n (isteğe bağlı, kullanılmıyor)
-
-`WHATSAPP_PHONE` değeri yeni katalog formatında dosya adına gömülür, eski kataloglarda ise (ör. `products_session.html`) otomatik
-fallback olarak kullanılır. WhatsApp Reply Server farklı bir hostta çalışıyorsa `WHATSAPP_WEBHOOK_URL` değerini güncelleyerek
-ürün sunucusunun doğru endpoint'e mesaj iletmesini sağlayabilirsiniz. Üretim ortamında doğru numara ve URL tanımı kritik
-öneme sahiptir.
-
-## 📊 Multi-Agent İş Akışı
-
-1. **Mesaj Alımı**: WhatsApp → WhatsApp Bot
-2. **Intent Analizi**: Swarm Intent Analyzer mesajı kategorilendirme
-3. **Agent Routing**: Uygun uzman agent'a yönlendirme
-4. **İşlem**: Specialized agent görevini yerine getirme
-5. **Database**: PostgreSQL'dan veri çekme/yazma
-6. **Yanıt**: Akıllı yanıt oluşturma ve gönderme
-
-### Agent Handoff Akışı
-- **Ürün Arama**: Intent Analyzer → Product Specialist
-- **Sipariş Verme**: Product Specialist → Order Manager
-- **Teknik Sorular**: Intent Analyzer → Technical Support
-- **Satış Desteği**: Herhangi bir agent → Sales Expert
-
-## 🗄️ Veritabanı Şeması
-
-```sql
--- Ürünler tablosu
-CREATE TABLE products_semantic (
-    id SERIAL PRIMARY KEY,
-    product_code TEXT,
-    product_name TEXT,
-    price NUMERIC,
-    stock_quantity INTEGER,
-    description TEXT,
-    specifications TEXT,
-    category TEXT,
-    brand TEXT
-);
-
--- Siparişler tablosu
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    order_number TEXT UNIQUE,
-    whatsapp_number TEXT,
-    total_amount NUMERIC,
-    status TEXT DEFAULT 'draft',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Sipariş kalemleri
-CREATE TABLE order_items (
-    id SERIAL PRIMARY KEY,
-    order_id INTEGER REFERENCES orders(id),
-    product_id INTEGER REFERENCES products_semantic(id),
-    quantity INTEGER,
-    unit_price NUMERIC,
-    total_price NUMERIC
-);
-
--- Geçici sepet oturumları
-CREATE TABLE temp_product_sessions (
-    session_id TEXT,
-    whatsapp_number TEXT,
-    product_data JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-## 📁 Proje Yapısı
-
-```
-Asistan/
-├── src/
-│   └── core/
-│       ├── swarm_b2b_system.py      # CLI entrypoint (test/server)
-│       ├── swarm_api.py             # Flask HTTP yüzeyi
-│       ├── swarm_runtime.py         # SwarmB2BSystem ve hafıza
-│       ├── swarm_agents.py          # Agent tanımları ve handoff yardımcıları
-│       ├── swarm_context.py         # Oturum, miktar ve multi-order yardımcıları
-│       ├── swarm_orders.py          # Sipariş işleme yardımcıları
-│       ├── swarm_search.py          # Ürün arama ve katalog oturumları
-│       ├── swarm_html.py            # HTML üretim yardımcıları
-│       ├── database_tools_fixed.py  # PostgreSQL yardımcıları
-│       ├── whatsapp-webhook-sender.js # WhatsApp köprüsü
-│       ├── product-list-server-v2.js  # Katalog sunucusu
-│       └── config.js                # Ortak Node.js yapılandırması
-├── requirements.txt                 # Python bağımlılıkları
-├── package.json                     # Node.js bağımlılıkları
-└── README.md                        # Bu dosya
-```
-
-## 🚀 Sistem Avantajları
-
-- ✅ OpenAI Swarm Multi-Agent mimarisi
-- ✅ Intent-based akıllı routing
-- ✅ Gelişmiş sipariş yönetimi
-- ✅ PostgreSQL entegrasyonu
-- ✅ Web tabanlı ürün listesi
-- ✅ Session ve context yönetimi
-- ✅ Otomatik agent handoff
-- ✅ Sipariş geçmişi ve iptal
-- ✅ Stok kontrolü ve doğrulama
-
-## 🔄 Sistem Durumu
-
-### ✅ Aktif Sistemler
-- OpenAI Swarm Multi-Agent System (Port 3007)
-- WhatsApp Bot Integration (Port 3001)
-- PostgreSQL Veritabanı
-
-### ❌ Kaldırılan Sistemler
-- ~~CrewAI Server (Port 3002)~~ - Swarm ile değiştirildi
-- ~~n8n Workflow Engine~~ - Artık kullanılmıyor
-
-## 📝 Lisans
-
-MIT
-
-## 👥 Katkıda Bulunanlar
-
-- Proje Sahibi
-
-## 📞 İletişim
-
-WhatsApp: +90 530 689 78 85
+Modern B2B satış süreçleri için WhatsApp üzerinden çalışan çok ajanlı (multi-agent) bir AI asistanı. Ürün arama, stok kontrolü, sipariş oluşturma ve sipariş geçmişi gibi işlemleri, OpenRouter üzerindeki OpenAI Swarm runtime’ı ve PostgreSQL veritabanını kullanarak uçtan uca yönetir.
 
 ---
 
-🤖 Generated with [Claude Code](https://claude.ai/code)
+## 🧩 Bileşen Özeti
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+```
+[Müşteri]
+   │ WhatsApp
+   ▼
+[whatsapp-webhook-sender.js]  ── typing indicator, mesaj köprüsü
+   │ HTTP (3001)                
+   ▼
+[swarm_api.py / SwarmB2BSystem] ── OpenRouter (Swarm) çağrıları (3007)
+   │
+   ├─ swarm_agents.py            →  Intent Analyzer, Product Specialist, Sales Expert,
+   │                                Order Manager, Customer Manager
+   ├─ swarm_orders.py            →  Sipariş geçmişi + LLM destekli zaman aralığı çözümü
+   ├─ swarm_search.py            →  Ürün arama & stok araçları
+   ├─ swarm_html.py              →  HTML katalog & sipariş sayfaları
+   └─ PostgreSQL                 →  orders, order_items, products_semantic, vb.
+```
+
+---
+
+## 👥 Ajanlar
+
+| Ajan | Rolü | Ana Fonksiyonlar |
+|------|------|------------------|
+| **Intent Analyzer** | İlk mesaj analizi, niyet tespiti | Handoff kararları, MIKTAR
+giriş koruması |
+| **Product Specialist** | Ürün arama & listeleme | `product_search_tool`, stok kontrol, HTML ürün listesi |
+| **Sales Expert** | Seçilen ürün doğrulama, sipariş geçmişi | `get_order_history`, JSON handoff, fiyat/teknik yönlendirme |
+| **Order Manager** | Tek ürün sipariş akışı | `process_context_quantity_input`, stok kontrol, sipariş kaydı |
+| **Customer Manager** | Selamlama / teşekkür / müşteri status | `customer_check_tool`, kredi limiti bilgiler |
+
+Swarm runtime, ajanlar arası geçişleri `swarm_agents.py` içerisindeki handoff yardımcılarıyla yönetir.
+
+---
+
+## 🧠 Öne Çıkan Özellikler
+
+- **LLM Destekli Zaman Aralığı Çözümü:** `_llm_resolve_order_history_timeframe()` Türkçe doğal dil ifadelerini (örn. “geçen cuma”, “temmuz başı”) ISO tarih aralıklarına çevirir; güven düşükse deterministik fallback devreye girer.
+- **Otomatik WhatsApp Kimlik Normalizasyonu:** `get_order_history`, `get_all_orders_for_customer`, `get_order_details` fonksiyonları `+90…`, `905…` veya `@c.us` formatlarını otomatik normalize eder.
+- **Typing Indicator:** `whatsapp-webhook-sender.js` gelen mesajı işlediği süre boyunca typing durumunu otomatik gönderir, kullanıcı beklerken üç nokta animasyonu görür.
+- **HTML Sipariş/Katalog Sayfaları:** `swarm_html.py` ile oluşturulan sayfalar Cloudflare tüneli üzerinden dışarı açılır.
+- **Gelişmiş Miktar Algılama:** Task 2.5 geliştirmesi ile Türkçe sayı yazımları, aralıklar, “birkaç” gibi muğlak ifadeler işlem akışına entegre edilir.
+
+---
+
+## 🔧 Kurulum ve Çalıştırma
+
+### 1. Depoyu Klonlayın
+```bash
+git clone https://github.com/Bahadir67/B2B_Agent.git
+cd B2B_Agent
+```
+
+### 2. Python Ortamı
+```bash
+python -m venv venv
+venv\Scripts\activate       # Windows
+# source venv/bin/activate   # macOS/Linux
+pip install -r requirements.txt
+```
+
+### 3. Node.js Bağımlılıkları
+```bash
+npm install
+```
+
+### 4. Ortam Değişkenleri
+```bash
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS/Linux
+```
+`.env` içindeki ana değişkenler:
+
+| Değişken | Açıklama |
+|----------|----------|
+| `OPENROUTER_API_KEY` | OpenRouter API anahtarınız |
+| `OPENROUTER_MODEL`   | Varsayılan Swarm modeli (`openai/gpt-4.1-mini`) |
+| `POSTGRES_*`         | PostgreSQL bağlantı bilgileri |
+| `WHATSAPP_NUMBER`    | Katalog tüneli ve bağlantılar için kullanılır |
+| `TUNNEL_URL`         | `product-pages/` klasörünün harici adresi |
+| `WHATSAPP_TYPING_INTERVAL_MS` | Typing göstergesi yenileme süresi (opsiyonel) |
+
+### 5. Veritabanı
+```bash
+psql -U postgres -c "CREATE DATABASE eticaret_db;"
+psql -U postgres -d eticaret_db -f migrations/001_create_order_tables.sql
+psql -U postgres -d eticaret_db -f migrations/002_remove_cart_system.sql
+psql -U postgres -d eticaret_db -f migrations/003_valve_bul_extras.sql
+```
+
+### 6. Servisleri Başlat
+```bash
+start_services.bat            # Windows tüm servisleri açar
+# python src/core/swarm_b2b_system.py   # Sadece Swarm runtime
+# node src/core/whatsapp-webhook-sender.js
+# node src/core/product-list-server-v2.js
+```
+
+---
+
+## 🗂️ Önemli Modüller
+
+- `swarm_b2b_system.py` – CLI giriş noktası, Swarm runtime başlatma
+- `swarm_runtime.py` – Konuşma hafızası, Swarm çağrıları, JSON override desteği
+- `swarm_agents.py` – Ajan talimatları ve handoff fonksiyonları
+- `swarm_orders.py` – Sipariş akışı, LLM zaman aralığı analizi, HTML geçmiş üretimi
+- `swarm_search.py` – Ürün arama & stok kontrol araçları (valf, şartlandırıcı, vb.)
+- `swarm_html.py` – HTML sipariş/katalog üreticileri
+- `swarm_api.py` – Flask HTTP yüzeyi (`/process-message`, ürün seçim webhook’u)
+- `whatsapp-webhook-sender.js` – WhatsApp-API köprüsü, typing indicator
+- `product-list-server-v2.js` – Ürün & sipariş HTML sunucusu
+- `database_tools_fixed.py` – PostgreSQL bağlantısı ve yardımcı fonksiyonlar
+
+---
+
+## 🔄 Çalışma Akışı (Sipariş Geçmişi Örneği)
+
+1. **Mesaj**: “Geçen cuma siparişlerim?”
+2. **Intent Analyzer**: Mesajı `SIPARIS_GECMIS` olarak sınıflandırır, Sales Expert’e devreder.
+3. **Sales Expert**: Talebi anlar, gerekirse kullanıcıya JSON çözümü döndürür.
+4. **Swarm Runtime**: JSON dönerse doğrudan `get_order_history` çağrısı yapar; aksi halinde `timeframe_text` ile devam eder.
+5. **swarm_orders**:
+   - `_llm_resolve_order_history_timeframe` çağrısı (güvenli ise Türkçe etiket/note üretir)
+   - PostgreSQL’den siparişleri çeker
+   - `product-pages/` içinde HTML çıktıyı üretir
+   - WhatsApp mesajı ve linki döndürür
+6. **whatsapp-webhook-sender**: Yanıt gönderene kadar typing durumunu gösterir, ardından mesajı teslim eder.
+
+---
+
+## 🧪 Geliştirme İpuçları
+
+- **HTML Çıktıları**: `product-pages/` klasörü git tarafından izlenmez; gereksiz dosyaları düzenli temizleyin.
+- **WhatsApp Sessions**: `whatsapp-sessions/` klasörünü depoya dahil etmeyin.
+- **LLM Fallback**: `_resolve_order_history_timeframe` halen “bu ay”, “geçen ay” gibi kalıpları anında çözer; bu nedenle LLM çağrıları gereksiz yere tetiklenmez.
+- **Typing Interval**: Ağ gecikmesi yüksek ortamlarda `WHATSAPP_TYPING_INTERVAL_MS` değerini 4000–8000 ms aralığında tutmak yeterlidir.
+- **Debug Script**: `debug_month_detection.py` ile LLM zaman aralığı testleri yapılabilir.
+
+---
+
+## 🛠️ Sorun Giderme
+
+| Sorun | İpuçları |
+|-------|----------|
+| WhatsApp mesajı gelmiyor | `whatsapp-webhook-sender.js` loglarını kontrol edin, QR yeniden tarayın, `WHATSAPP_WEBHOOK_PORT` çakışması olup olmadığını kontrol edin |
+| Sipariş geçmişi boş dönüyor | WhatsApp numarasının `orders.whatsapp_number` alanında doğru formatta olduğundan emin olun; yeni normalizasyon sayesinde `+90…`, `905…` veya `@c.us` çalışır |
+| LLM yanıtı “Bu ay…” notu döndürüyor | `_llm_resolve_order_history_timeframe` güven düşük gördüğünde fallback’e döner; ihtiyaç varsa prompt metnini `swarm_orders.py` üzerinden güncelleyin |
+| Typing göstergesi kapanmıyor | `whatsapp-web.js` sürümünü ve istemci loglarını kontrol edin; `runWithTypingIndicator` hatalarında `paused` gönderimi atlanmış olabilir |
+
+---
+
+## 📄 Lisans ve İletişim
+
+- **Lisans:** MIT
+- **İletişim:** WhatsApp – +90 530 689 78 85
+
+---
+
+> Bu dokümantasyon OpenAI Swarm tabanlı WhatsApp B2B AI Satış Asistanı için güncellenmiştir.

@@ -226,12 +226,12 @@ Fiyat: [fiyat] TL
 Kaç adet? (1-[max_stok] arası)"
 
 **Sipariş Geçmişi İpuçları**:
-- Varsayılan filtre: içinde bulunulan ayın tamamı (tüm siparişler)
-- Kullanıcı zaman aralığı isterse aynı ifadeyi timeframe_text parametresine aktar (örn. "son 15 gün", "Mart ayı", "2024", "bu yıl").
-- Sonuçları 10 kayıtla sınırlama; seçilen zaman aralığındaki tüm siparişler gösterilsin.
+- Kullanıcı zaman aralığını anlarsan tarihleri `YYYY-MM-DD` formatına çevir ve `get_order_history` fonksiyonuna `start_date` ve `end_date` argümanları ile çağrı yap.
+- Format örneği: `get_order_history(whatsapp_number, start_date="2025-09-01", end_date="2025-09-30")`. `limit` parametresini sadece kullanıcı açıkça kayıt sayısı isterse kullan.
+- Tarihi kesinleştiremiyorsan `timeframe_text` kullanarak fallback yap (örn. "son 15 gün", "Mart ayı").
 
 **Diğer Komutlar**:
-- "siparişlerim", "geçmiş siparişler", "order history", "son siparişlerim", "bu yılın siparişleri", "mart ayı siparişleri" -> get_order_history(whatsapp_number, timeframe_text="<kullanıcı talebi>") (HTML tablo linki)
+- "siparişlerim", "geçmiş siparişler", "order history", "son siparişlerim", "bu yılın siparişleri", "mart ayı siparişleri" -> get_order_history(whatsapp_number, start_date=..., end_date=...) veya gerekirse timeframe_text (HTML tablo linki)
 - "sipariş detayları", "siparişlerimi gör" -> show_order_details_html() (detaylı cart görünümü)
 - "ORD-2025-XXXX durumu" -> get_order_details()
 - "sipariş ver", "satın al" -> transfer_to_order_manager()
