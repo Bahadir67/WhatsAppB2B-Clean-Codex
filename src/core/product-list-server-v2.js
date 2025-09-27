@@ -160,7 +160,7 @@ app.post('/select-product', express.json(), async (req, res) => {
         const axios = require('axios');
         
         try {
-            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 3007}/process-message`, {
+            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 5000}/process-message`, {
                 message: urunSecildiMessage,
                 whatsapp_number: whatsappNumber
             });
@@ -209,6 +209,48 @@ app.post('/select-product', express.json(), async (req, res) => {
         
     } catch (error) {
         console.error('[PRODUCT SELECTION ERROR]', error);
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// Order delete endpoint
+app.post('/delete-order', express.json(), async (req, res) => {
+    try {
+        const { orderNumber, whatsappNumber } = req.body;
+
+        if (!orderNumber || !whatsappNumber) {
+            return res.json({ success: false, error: 'orderNumber and whatsappNumber required' });
+        }
+
+        console.log(`[ORDER DELETE] ${orderNumber} for ${whatsappNumber}`);
+
+        // Call the Swarm system to cancel the order
+        const axios = require('axios');
+
+        try {
+            const swarmResponse = await axios.post(`http://localhost:${process.env.SWARM_SERVER_PORT || 5000}/cancel-order-endpoint`, {
+                orderNumber: orderNumber,
+                whatsappNumber: whatsappNumber
+            });
+
+            if (swarmResponse.data.success) {
+                console.log(`[ORDER DELETE SUCCESS] ${orderNumber}`);
+                res.json({ success: true, message: 'Sipariş başarıyla iptal edildi' });
+            } else {
+                console.log(`[ORDER DELETE FAILED] ${orderNumber}: ${swarmResponse.data.error}`);
+                res.json({ success: false, error: swarmResponse.data.error || 'Sipariş iptal edilemedi' });
+            }
+
+        } catch (swarmError) {
+            console.error('[ORDER DELETE SWARM ERROR]', swarmError.message);
+            res.json({
+                success: false,
+                error: 'Swarm sistemi yanıt vermedi: ' + swarmError.message
+            });
+        }
+
+    } catch (error) {
+        console.error('[ORDER DELETE ERROR]', error);
         res.json({ success: false, error: error.message });
     }
 });
@@ -363,7 +405,7 @@ function generateProductListHTML(products, query, sessionId) {
                 const name = (button.dataset.name || '').trim();
                 const price = (button.dataset.price || '').trim();
                 const priceLabel = (button.dataset.priceLabel || '').trim();
-                const message = `ÜRÜN_SEÇİLDİ: ${code} - ${name} - ${priceLabel}`;
+                const message = "URUN_SECILDI: " + code + " - " + name + " - " + priceLabel;
 
                 try {
                     const response = await fetch('/select-product', {
@@ -396,6 +438,97 @@ function generateProductListHTML(products, query, sessionId) {
 
     return html;
 }
+
+// Multi-product order placement endpoint
+app.post('/place-multi-order', express.json(), async (req, res) => {
+    try {
+        const { orderData, whatsappNumber } = req.body;
+
+        console.log(`[MULTI ORDER] Received order request from ${whatsappNumber}:`, JSON.stringify(orderData, null, 2));
+
+        if (!orderData || !whatsappNumber) {
+            return res.status(400).json({
+                success: false,
+                error: 'orderData ve whatsappNumber gerekli'
+            });
+        }
+
+        // Forward order to Swarm system
+        const swarmUrl = `http://localhost:3007/process-message`;
+        const swarmPayload = {
+            userId: whatsappNumber.replace('@c.us', ''),
+            whatsapp_number: whatsappNumber,
+            message: `MULTI_ORDER_PLACEMENT: ${JSON.stringify(orderData)}`
+        };
+
+        console.log(`[MULTI ORDER] Forwarding to Swarm:`, swarmPayload);
+
+        const swarmResponse = await fetch(swarmUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(swarmPayload)
+        });
+
+        if (!swarmResponse.ok) {
+            console.error(`[MULTI ORDER] Swarm request failed: ${swarmResponse.status}`);
+            return res.status(500).json({
+                success: false,
+                error: 'Sipariş sistemi hatası'
+            });
+        }
+
+        const swarmResult = await swarmResponse.json();
+        console.log(`[MULTI ORDER] Swarm response:`, swarmResult);
+
+        if (swarmResult.success) {
+            // Extract order number from response if available
+            const orderNumberMatch = swarmResult.response?.match(/Sipariş No[:\s]*([^\s\n]+)/i);
+            const orderNumber = orderNumberMatch ? orderNumberMatch[1] : 'UNKNOWN';
+
+            // Send order confirmation to WhatsApp
+            try {
+                const whatsappResponse = await fetch(`${whatsappWebhookUrl}/send-message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        to: whatsappNumber,
+                        message: swarmResult.response
+                    })
+                });
+
+                if (whatsappResponse.ok) {
+                    console.log(`[MULTI ORDER] WhatsApp confirmation sent to ${whatsappNumber}`);
+                } else {
+                    console.error(`[MULTI ORDER] WhatsApp send failed: ${whatsappResponse.status}`);
+                }
+            } catch (whatsappError) {
+                console.error('[MULTI ORDER] WhatsApp error:', whatsappError);
+            }
+
+            return res.json({
+                success: true,
+                orderNumber: orderNumber,
+                message: swarmResult.response
+            });
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: swarmResult.error || 'Sipariş oluşturulamadı'
+            });
+        }
+
+    } catch (error) {
+        console.error('[MULTI ORDER ERROR]', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Sunucu hatası'
+        });
+    }
+});
 
 app.listen(port, () => {
     console.log(`🛍️  Product List Server v2.0 (Dynamic + Static) running on port ${port}`);

@@ -16,7 +16,7 @@ import re
 import time
 import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, TypedDict
 from swarm import Swarm, Agent
 from flask import Flask, request, jsonify
 
@@ -206,6 +206,66 @@ def handle_product_selection(whatsapp_number: str, selection_message: str) -> st
         return f"[ERROR] Ürün seçim işleme hatası: {str(e)}"
 
 # ===================== TASK 2.5: ENHANCED QUANTITY INPUT DETECTION =====================
+
+def detect_multi_product_order(message: str) -> tuple[bool, dict]:
+    """
+    Detect multi-product order requests like:
+    - "10A0001,10A0002,10A0003 ten 1 er adet siparişimdir"
+    - "10A0001,10A0002 ten 2 şer adet istiyorum"
+    - "10A0001 1 adet, 10A0002 2 adet, 10A0003 1 adet"
+
+    Returns (is_multi_order, order_data)
+    order_data: {'products': [{'code': str, 'quantity': int}, ...]}
+    """
+    try:
+        message = message.strip().lower()
+        print(f"[DEBUG] Processing message: '{message}'")
+
+        # Pattern 1: "code1,code2,code3 ten X er adet"
+        pattern1 = r'([A-Z0-9,\s]+?)\s+ten\s+(\d+)\s+(?:er|şer|şar|er)\s+adet'
+        match1 = re.search(pattern1, message, re.IGNORECASE)
+        if match1:
+            codes_str = match1.group(1).strip().upper()
+            quantity = int(match1.group(2))
+
+            # Split codes by comma
+            codes = [code.strip() for code in codes_str.split(',') if code.strip()]
+
+            if len(codes) > 1 and len(codes) <= 10:  # Max 10 products
+                products = [{'code': code, 'quantity': quantity} for code in codes]
+                print(f"[MULTI ORDER DETECT] Pattern 1: {len(codes)} products, {quantity} each")
+                return True, {'products': products}
+
+        # Pattern 2: "code1,code2 ten X adet"
+        pattern2 = r'([A-Z0-9,\s]+?)\s+ten\s+(\d+)\s+adet'
+        match2 = re.search(pattern2, message, re.IGNORECASE)
+        if match2:
+            codes_str = match2.group(1).strip().upper()
+            quantity = int(match2.group(2))
+
+            codes = [code.strip() for code in codes_str.split(',') if code.strip()]
+
+            if len(codes) > 1 and len(codes) <= 10:
+                products = [{'code': code, 'quantity': quantity} for code in codes]
+                print(f"[MULTI ORDER DETECT] Pattern 2: {len(codes)} products, {quantity} each")
+                return True, {'products': products}
+
+        # Pattern 3: Individual product specifications
+        # "10A0001 1 adet, 10A0002 2 adet, 10A0003 1 adet"
+        pattern3 = r'([A-Z0-9]+)\s+(\d+)\s+adet'
+        matches3 = re.findall(pattern3, message, re.IGNORECASE)
+
+        if len(matches3) > 1 and len(matches3) <= 10:
+            products = [{'code': code.upper(), 'quantity': int(qty)} for code, qty in matches3]
+            print(f"[MULTI ORDER DETECT] Pattern 3: {len(products)} individual products")
+            return True, {'products': products}
+
+        print(f"[DEBUG] No pattern matched")
+        return False, {}
+
+    except Exception as e:
+        print(f"[MULTI ORDER DETECT ERROR] {str(e)}")
+        return False, {}
 
 def detect_quantity_input(message: str) -> tuple[bool, int | str]:
     """
@@ -475,7 +535,7 @@ def generate_product_html(products, query, html_filename):
             <div class="content">
                 <div class="product-list">
                     {"".join([f'''
-                        <div class="product {"out-of-stock" if p["stock"] <= 0 else ""}" onclick="selectProduct('{p["code"]}', '{p["name"]}', {p["price"]})">
+                        <div class="product {"out-of-stock" if p["stock"] <= 0 else ""}" onclick="selectProduct('{p["code"]}', '{p["name"].replace("'", "&apos;")}', {p["price"]})">
                             <div class="product-name">{p["name"]}</div>
                             <div class="product-code">Kod: {p["code"]}</div>
                             <div class="product-price">{p["price"]} TL</div>
@@ -535,15 +595,41 @@ def generate_product_html(products, query, html_filename):
             window.returnToWhatsApp = navigateBackToWhatsApp;
         }})();
 
+        function copyToClipboard(text) {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                return navigator.clipboard.writeText(text);
+            }} else {{
+                // Fallback for older browsers
+                var textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-999999px";
+                textArea.style.top = "-999999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {{
+                    document.execCommand('copy');
+                    return Promise.resolve();
+                }} catch (err) {{
+                    return Promise.reject(err);
+                }} finally {{
+                    document.body.removeChild(textArea);
+                }}
+            }}
+        }}
+
         function selectProduct(code, name, price) {{
+            console.log('selectProduct called with:', code, name, price);
             // Create WhatsApp message
             var whatsappMsg = "URUN_SECILDI: " + code + " - " + name + " - " + price + " TL";
+            console.log('WhatsApp message:', whatsappMsg);
 
-            // Try to send via fetch
+            // Send via fetch
             fetch('/select-product', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ 
+                body: JSON.stringify({{
                     message: whatsappMsg,
                     sessionId: '{html_filename}',
                     productCode: code,
@@ -551,18 +637,104 @@ def generate_product_html(products, query, html_filename):
                     productPrice: price
                 }})
             }}).then(response => {{
-                // Fetch success - do nothing here, let clipboard handle it
+                console.log('Fetch response:', response.status);
+                if (response.ok) {{
+                    // Success - show overlay
+                    console.log('Showing success overlay');
+                    showSuccessOverlay();
+                }} else {{
+                    // Server error
+                    console.log('Server error:', response.status);
+                    showErrorOverlay();
+                }}
             }}).catch(error => {{
-                // Fetch blocked by ad blocker - show copy dialog
-                console.log('Fetch blocked, showing copy dialog');
+                // Network error
+                console.log('Network error:', error);
+                showErrorOverlay();
             }});
-            
-            // Silent clipboard copy and show overlay popup
-            navigator.clipboard.writeText(whatsappMsg).then(function() {{
-                showSuccessOverlay();
-            }}).catch(function(err) {{
-                showSuccessOverlay();
-            }});
+        }}
+
+        function showErrorOverlay() {{
+            // Create overlay background
+            var overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(239, 68, 68, 0.8)';
+            overlay.style.zIndex = '10000';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.3s ease';
+
+            // Create popup box
+            var popup = document.createElement('div');
+            popup.style.backgroundColor = '#ffffff';
+            popup.style.borderRadius = '18px';
+            popup.style.padding = '36px 28px';
+            popup.style.maxWidth = '360px';
+            popup.style.width = '90%';
+            popup.style.textAlign = 'center';
+            popup.style.boxShadow = '0 18px 42px rgba(239,68,68,0.3)';
+            popup.style.transform = 'scale(0.9)';
+            popup.style.transition = 'transform 0.3s ease';
+
+            // Create error icon
+            var icon = document.createElement('div');
+            icon.innerHTML = '❌';
+            icon.style.fontSize = '58px';
+            icon.style.marginBottom = '18px';
+
+            // Create title
+            var title = document.createElement('h3');
+            title.innerHTML = 'Seçim Başarısız';
+            title.style.color = '#dc2626';
+            title.style.margin = '0 0 18px 0';
+            title.style.fontSize = '24px';
+            title.style.fontWeight = '700';
+
+            // Create message
+            var message = document.createElement('p');
+            message.innerHTML = 'Ürün seçimi gönderilemedi. Lütfen tekrar deneyin veya WhatsApp üzerinden devam edin.';
+            message.style.color = '#475569';
+            message.style.margin = '0';
+            message.style.fontSize = '16px';
+            message.style.lineHeight = '1.6';
+
+            // Assemble popup
+            popup.appendChild(icon);
+            popup.appendChild(title);
+            popup.appendChild(message);
+            overlay.appendChild(popup);
+
+            // Add to page
+            document.body.appendChild(overlay);
+
+            // Animate in
+            setTimeout(function() {{
+                overlay.style.opacity = '1';
+                popup.style.transform = 'scale(1)';
+            }}, 50);
+
+            // Close on overlay click
+            overlay.onclick = function(e) {{
+                if (e.target === overlay) {{
+                    overlay.style.opacity = '0';
+                    popup.style.transform = 'scale(0.9)';
+                    setTimeout(function() {{
+                        if (document.body.contains(overlay)) {{
+                            document.body.removeChild(overlay);
+                        }}
+                    }}, 300);
+                }}
+            }};
+
+            setTimeout(function() {{
+                overlay.onclick({{ target: overlay }});
+            }}, 4000);
         }}
 
         function showSuccessOverlay() {{
@@ -609,7 +781,7 @@ def generate_product_html(products, query, html_filename):
 
             // Create message
             var message = document.createElement('p');
-            message.innerHTML = '👆 Geri tuşuna bastığınızda WhatsApp\'a dönecek ve bu sekme kapanacak.';
+            message.innerHTML = '👆 Geri tuşuna bastığınızda WhatsApp&apos;a dönecek ve bu sekme kapanacak.';
             message.style.color = '#475569';
             message.style.margin = '0';
             message.style.fontSize = '17px';
@@ -648,6 +820,1164 @@ def generate_product_html(products, query, html_filename):
             }}, 3500);
         }}
     </script>
+</body>
+</html>"""
+    return html
+
+def generate_order_details_html(orders, whatsapp_number, html_filename, tunnel_url='http://localhost:3005'):
+    """Generate HTML content for order details with cart view and delete functionality"""
+    html = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sipariş Detayları</title>
+    <style>
+        body {{
+            margin: 0;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(160deg, #1e3c72 0%, #2a5298 45%, #1e3c72 100%);
+            color: #1f2933;
+        }}
+
+        .page-wrapper {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px 48px;
+        }}
+
+        .container {{
+            width: 100%;
+            max-width: 1000px;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(10, 22, 70, 0.18);
+            overflow: hidden;
+        }}
+
+        .header {{
+            background: linear-gradient(120deg, rgba(42, 82, 152, 0.95), rgba(30, 60, 114, 0.95));
+            color: #f8fafc;
+            padding: 36px 40px 28px;
+            text-align: left;
+        }}
+
+        .header h2 {{
+            margin: 0 0 12px;
+            font-size: 28px;
+            letter-spacing: 0.4px;
+        }}
+
+        .header p {{
+            margin: 4px 0;
+            font-size: 16px;
+            opacity: 0.92;
+        }}
+
+        .results-meta {{
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: rgba(248, 250, 252, 0.18);
+            font-size: 14px;
+            margin-top: 14px;
+        }}
+
+        .content {{
+            padding: 32px 40px 40px;
+            background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+        }}
+
+        .order-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }}
+
+        .order-card {{
+            border-radius: 20px;
+            padding: 24px;
+            background: #ffffff;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+            border: 1px solid #e2e8f0;
+        }}
+
+        .order-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }}
+
+        .order-number {{
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 18px;
+        }}
+
+        .order-status {{
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+
+        .status-confirmed {{
+            background: rgba(34, 197, 94, 0.12);
+            color: #16a34a;
+        }}
+
+        .status-cancelled {{
+            background: rgba(239, 68, 68, 0.12);
+            color: #dc2626;
+        }}
+
+        .status-pending {{
+            background: rgba(251, 191, 36, 0.12);
+            color: #d97706;
+        }}
+
+        .order-meta {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }}
+
+        .meta-item {{
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }}
+
+        .meta-label {{
+            color: #64748b;
+            font-weight: 500;
+        }}
+
+        .meta-value {{
+            color: #1e293b;
+            font-weight: 600;
+        }}
+
+        .order-items {{
+            margin-bottom: 20px;
+        }}
+
+        .item {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }}
+
+        .item:last-child {{
+            border-bottom: none;
+        }}
+
+        .item-info {{
+            flex: 1;
+        }}
+
+        .item-name {{
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }}
+
+        .item-details {{
+            color: #64748b;
+            font-size: 13px;
+        }}
+
+        .item-price {{
+            text-align: right;
+            font-weight: 600;
+            color: #16a34a;
+        }}
+
+        .order-total {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-top: 2px solid #e2e8f0;
+            margin-top: 16px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e293b;
+        }}
+
+        .delete-btn {{
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }}
+
+        .delete-btn:hover {{
+            background: #b91c1c;
+        }}
+
+        .no-orders {{
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }}
+
+        .no-orders h3 {{
+            margin: 0 0 12px;
+            color: #475569;
+        }}
+
+        @media (max-width: 640px) {{
+            .container {{ border-radius: 18px; }}
+            .header {{ padding: 30px 24px; }}
+            .content {{ padding: 28px 24px 32px; }}
+            .order-card {{ padding: 20px; }}
+            .order-header {{ flex-direction: column; align-items: flex-start; gap: 12px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="container">
+            <div class="header">
+                <h2>🛒 Sipariş Detayları</h2>
+                <p>Siparişlerinizi görüntüleyin ve yönetin</p>
+                <div class="results-meta">
+                    <span>📦 {len(orders)} sipariş bulundu</span>
+                    <span>🕒 Güncelleme: {datetime.utcnow().strftime('%H:%M')}</span>
+                </div>
+            </div>
+
+            <div class="content">
+                {"".join([f'''
+                <div class="order-card">
+                    <div class="order-header">
+                        <div class="order-number">{order['order_number']}</div>
+                        <div class="order-status status-{order['status'].lower()}">{order['status']}</div>
+                    </div>
+
+                    <div class="order-meta">
+                        <div class="meta-item">
+                            <div class="meta-label">Tarih</div>
+                            <div class="meta-value">{order['created_at']}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Toplam Tutar</div>
+                            <div class="meta-value">{order['total_amount']:.2f} TL</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Ürün Sayısı</div>
+                            <div class="meta-value">{len(order['items'])} adet</div>
+                        </div>
+                    </div>
+
+                    <div class="order-items">
+                        {"".join([f'''
+                        <div class="item">
+                            <div class="item-info">
+                                <div class="item-name">{item['product_name']}</div>
+                                <div class="item-details">Kod: {item['product_code']} | Adet: {item['quantity']} | Birim Fiyat: {item['unit_price']:.2f} TL</div>
+                            </div>
+                            <div class="item-price">{item['total_price']:.2f} TL</div>
+                        </div>
+                        ''' for item in order['items']])}
+                    </div>
+
+                    <div class="order-total">
+                        <span>TOPLAM</span>
+                        <span>{order['total_amount']:.2f} TL</span>
+                    </div>
+
+                    {f'<button class="delete-btn" onclick="confirmDeleteOrder(\'{order["order_number"]}\')">Siparişi İptal Et</button>' if order['status'].upper() != 'CANCELLED' else '<div style="color: #64748b; font-style: italic;">Bu sipariş zaten iptal edilmiş</div>'}
+                </div>
+                ''' for order in orders]) if orders else '''
+                <div class="no-orders">
+                    <h3>Henüz Sipariş Yok</h3>
+                    <p>Sipariş geçmişiniz bulunmuyor. Ürün araması yaparak yeni sipariş oluşturabilirsiniz.</p>
+                </div>
+                '''}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function confirmDeleteOrder(orderNumber) {{
+            showDeleteConfirmation(orderNumber);
+        }}
+
+        function showDeleteConfirmation(orderNumber) {{
+            // Create overlay background
+            var overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            overlay.style.zIndex = '10000';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.3s ease';
+
+            // Create popup box
+            var popup = document.createElement('div');
+            popup.style.backgroundColor = '#ffffff';
+            popup.style.borderRadius = '18px';
+            popup.style.padding = '32px 28px';
+            popup.style.maxWidth = '420px';
+            popup.style.width = '90%';
+            popup.style.textAlign = 'center';
+            popup.style.boxShadow = '0 20px 40px rgba(0,0,0,0.3)';
+            popup.style.transform = 'scale(0.9)';
+            popup.style.transition = 'transform 0.3s ease';
+
+            // Create warning icon
+            var icon = document.createElement('div');
+            icon.innerHTML = '⚠️';
+            icon.style.fontSize = '48px';
+            icon.style.marginBottom = '20px';
+
+            // Create title
+            var title = document.createElement('h3');
+            title.innerHTML = 'Sipariş İptali Onayı';
+            title.style.color = '#dc2626';
+            title.style.margin = '0 0 16px 0';
+            title.style.fontSize = '22px';
+            title.style.fontWeight = '700';
+
+            // Create message
+            var message = document.createElement('p');
+            message.innerHTML = '<strong>' + orderNumber + '</strong> numaralı siparişi iptal etmek istediğinizden emin misiniz?<br><br>Bu işlem <strong>geri alınamaz</strong> ve sipariş kalıcı olarak iptal edilecektir.';
+            message.style.color = '#374151';
+            message.style.margin = '0 0 24px 0';
+            message.style.fontSize = '16px';
+            message.style.lineHeight = '1.6';
+
+            // Create button container
+            var buttonContainer = document.createElement('div');
+            buttonContainer.style.display = 'flex';
+            buttonContainer.style.gap = '12px';
+            buttonContainer.style.justifyContent = 'center';
+
+            // Cancel button
+            var cancelBtn = document.createElement('button');
+            cancelBtn.innerHTML = 'İptal';
+            cancelBtn.style.backgroundColor = '#6b7280';
+            cancelBtn.style.color = 'white';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.padding = '12px 24px';
+            cancelBtn.style.borderRadius = '8px';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.style.fontSize = '16px';
+            cancelBtn.style.fontWeight = '600';
+            cancelBtn.onclick = function() {{
+                overlay.style.opacity = '0';
+                popup.style.transform = 'scale(0.9)';
+                setTimeout(function() {{
+                    if (document.body.contains(overlay)) {{
+                        document.body.removeChild(overlay);
+                    }}
+                }}, 300);
+            }};
+
+            // Confirm button
+            var confirmBtn = document.createElement('button');
+            confirmBtn.innerHTML = 'Evet, İptal Et';
+            confirmBtn.style.backgroundColor = '#dc2626';
+            confirmBtn.style.color = 'white';
+            confirmBtn.style.border = 'none';
+            confirmBtn.style.padding = '12px 24px';
+            confirmBtn.style.borderRadius = '8px';
+            confirmBtn.style.cursor = 'pointer';
+            confirmBtn.style.fontSize = '16px';
+            confirmBtn.style.fontWeight = '600';
+            confirmBtn.onclick = function() {{
+                // Close confirmation popup
+                overlay.style.opacity = '0';
+                popup.style.transform = 'scale(0.9)';
+                setTimeout(function() {{
+                    if (document.body.contains(overlay)) {{
+                        document.body.removeChild(overlay);
+                    }}
+                }}, 300);
+                // Execute delete
+                deleteOrder(orderNumber);
+            }};
+
+            // Assemble buttons
+            buttonContainer.appendChild(cancelBtn);
+            buttonContainer.appendChild(confirmBtn);
+
+            // Assemble popup
+            popup.appendChild(icon);
+            popup.appendChild(title);
+            popup.appendChild(message);
+            popup.appendChild(buttonContainer);
+            overlay.appendChild(popup);
+
+            // Add to page
+            document.body.appendChild(overlay);
+
+            // Animate in
+            setTimeout(function() {{
+                overlay.style.opacity = '1';
+                popup.style.transform = 'scale(1)';
+            }}, 50);
+        }}
+
+        function deleteOrder(orderNumber) {{
+            // Show loading message
+            showMessage('Sipariş iptal ediliyor...', '#f59e0b', '#fef3c7');
+
+            fetch(window.location.origin + '/delete-order', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    orderNumber: orderNumber,
+                    whatsappNumber: '{whatsapp_number}'
+                }})
+            }}).then(response => {{
+                console.log('Delete response status:', response.status);
+                return response.json().then(data => ({{
+                    status: response.status,
+                    data: data
+                }}));
+            }}).then(result => {{
+                if (result.status === 200 && result.data.success) {{
+                    showMessage('✅ Sipariş başarıyla iptal edildi!', '#16a34a', '#dcfce7');
+                    // Reload the page after 2 seconds
+                    setTimeout(() => {{
+                        window.location.reload();
+                    }}, 2000);
+                }} else {{
+                    console.log('Delete failed:', result.data);
+                    showMessage('❌ Sipariş iptal edilemedi: ' + (result.data.error || 'Bilinmeyen hata'), '#dc2626', '#fef2f2');
+                }}
+            }}).catch(error => {{
+                console.log('Delete network error:', error);
+                showMessage('❌ Bağlantı hatası. Lütfen tekrar deneyin.', '#dc2626', '#fef2f2');
+            }});
+        }}
+
+        function showSuccessMessage(message) {{
+            showMessage(message, '#16a34a', '#dcfce7');
+        }}
+
+        function showErrorMessage(message) {{
+            showMessage(message, '#dc2626', '#fef2f2');
+        }}
+
+        function showMessage(message, textColor, bgColor) {{
+            var notification = document.createElement('div');
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.backgroundColor = bgColor;
+            notification.style.color = textColor;
+            notification.style.padding = '16px 20px';
+            notification.style.borderRadius = '8px';
+            notification.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)';
+            notification.style.zIndex = '10000';
+            notification.style.fontWeight = '600';
+            notification.style.maxWidth = '400px';
+            notification.innerHTML = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {{
+                if (document.body.contains(notification)) {{
+                    document.body.removeChild(notification);
+                }}
+            }}, 4000);
+        }}
+    </script>
+</body>
+</html>"""
+    return html
+
+
+def generate_product_cards_html(safe_products):
+    """Generate HTML cards for products - separate function to avoid nested f-strings"""
+    html_parts = []
+    for product in safe_products:
+        # Stok durumuna göre badge class'ı belirle
+        if product['stock'] > 10:
+            badge_class = "stock-available"
+            badge_text = "Stokta"
+        elif product['stock'] > 0:
+            badge_class = "stock-low"
+            badge_text = "Stokta"
+        else:
+            badge_class = "stock-out"
+            badge_text = "Tükendi"
+
+        # Stok durumuna göre max değer ve disabled attribute belirle
+        max_value = min(product['stock'], 999) if product['stock'] > 0 else 0
+        disabled_attr = "disabled" if product['stock'] <= 0 else ""
+
+        card_html = f'''
+                    <div class="product-card">
+                        <div class="product-header">
+                            <div class="product-code">{product['code']}</div>
+                            <div class="stock-badge {badge_class}">
+                                {badge_text}
+                            </div>
+                        </div>
+
+                        <div class="product-name">{product['name_html']}</div>
+
+                        <div class="product-price">{product['price']:.2f} TL</div>
+
+                        <div class="quantity-section">
+                            <label class="quantity-label">Miktar:</label>
+                            <input
+                                type="number"
+                                class="quantity-input"
+                                id="qty-{product['code']}"
+                                min="0"
+                                max="{max_value}"
+                                value="0"
+                                {disabled_attr}
+                                onchange="updateSummary()"
+                            >
+                        </div>
+                    </div>
+                    '''
+        html_parts.append(card_html)
+
+    return "".join(html_parts)
+
+def generate_javascript_code(safe_products, html_filename):
+    """Generate JavaScript code for multi-product ordering - separate function to avoid nested f-strings"""
+    js_parts = []
+
+    # updateSummary function
+    js_parts.append("""
+        function updateSummary() {
+            let totalItems = 0;
+            let totalAmount = 0;
+""")
+
+    for product in safe_products:
+        js_parts.append(f"""
+            const qty{product['code_js']} = parseInt(document.getElementById("qty-{product['code']}").value) || 0;
+            totalItems += qty{product['code_js']};
+            totalAmount += qty{product['code_js']} * {product['price']};
+""")
+
+    js_parts.append("""
+            document.getElementById("total-items").textContent = totalItems;
+            document.getElementById("total-amount").textContent = totalAmount.toFixed(2) + " TL";
+
+            const orderBtn = document.getElementById("order-btn");
+            orderBtn.disabled = totalItems === 0;
+        }
+""")
+
+    # placeOrder function
+    js_parts.append("""
+        function placeOrder() {
+            const orderData = {};
+""")
+
+    for product in safe_products:
+        js_parts.append(f"""
+            const qty{product['code_js']} = parseInt(document.getElementById('qty-{product['code']}').value) || 0;
+            if (qty{product['code_js']} > 0) {{
+                orderData["{product['code']}"] = {{
+                    "product_name": "{product['name_js']}",
+                    "quantity": qty{product['code_js']},
+                    "unit_price": {product['price']},
+                    "total_price": qty{product['code_js']} * {product['price']}
+                }};
+            }}
+""")
+
+    whatsapp_number = html_filename.split('_')[1] if '_' in html_filename else 'unknown'
+
+    js_parts.append(f"""
+            if (Object.keys(orderData).length === 0) {{
+                alert("Lütfen en az bir ürün için miktar girin.");
+                return;
+            }}
+
+            const orderBtn = document.getElementById("order-btn");
+            orderBtn.disabled = true;
+            orderBtn.textContent = "⏳ Sipariş İşleniyor...";
+
+            fetch(window.location.origin + "/place-multi-order", {{
+                method: "POST",
+                headers: {{ "Content-Type": "application/json" }},
+                body: JSON.stringify({{
+                    orderData: orderData,
+                    whatsappNumber: "{whatsapp_number}"
+                }})
+            }}).then(response => {{
+                return response.json().then(data => {{
+                    return {{
+                        status: response.status,
+                        data: data
+                    }};
+                }});
+            }}).then(result => {{
+                if (result.status === 200 && result.data.success) {{
+                    alert("✅ Sipariş başarıyla oluşturuldu!\\n\\nSipariş No: " + result.data.orderNumber);
+                    window.location.reload();
+                }} else {{
+                    alert("❌ Sipariş oluşturulamadı: " + (result.data.error || "Bilinmeyen hata"));
+                    orderBtn.disabled = false;
+                    orderBtn.textContent = "🛒 Sipariş Ver";
+                }}
+            }}).catch(error => {{
+                console.log("Order error:", error);
+                alert("❌ Bağlantı hatası. Lütfen tekrar deneyin.");
+                orderBtn.disabled = false;
+                orderBtn.textContent = "🛒 Sipariş Ver";
+            }});
+        }}
+
+        updateSummary();
+""")
+
+    return "".join(js_parts)
+
+def generate_multi_product_order_html(products, query_codes, html_filename):
+    """Generate HTML content for multi-product ordering interface"""
+    from html import escape
+
+    safe_products = []
+    for product in products:
+        code = str(product.get('code', ''))
+        name = product.get('name', '')
+        price_value = product.get('price', 0)
+        stock_value = product.get('stock', 0)
+
+        try:
+            price_number = float(price_value)
+        except (TypeError, ValueError):
+            price_number = 0.0
+
+        try:
+            stock_number = int(stock_value)
+        except (TypeError, ValueError):
+            stock_number = 0
+
+        code_js = re.sub(r'[^0-9A-Za-z_]', '_', code)
+        name_js = name.replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ').replace('\r', ' ')
+        safe_products.append({
+            'code': code,
+            'code_js': code_js,
+            'name_html': escape(name),
+            'name_js': name_js,
+            'price': price_number,
+            'stock': stock_number
+        })
+
+    query_codes_html = escape(str(query_codes))
+
+    html = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Çoklu Ürün Siparişi</title>
+    <style>
+        body {{
+            margin: 0;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(160deg, #1e3c72 0%, #2a5298 45%, #1e3c72 100%);
+            color: #1f2933;
+        }}
+
+        .page-wrapper {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px 48px;
+        }}
+
+        .container {{
+            width: 100%;
+            max-width: 900px;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(10, 22, 70, 0.18);
+            overflow: hidden;
+        }}
+
+        .header {{
+            background: linear-gradient(120deg, rgba(42, 82, 152, 0.95), rgba(30, 60, 114, 0.95));
+            color: #f8fafc;
+            padding: 36px 40px 28px;
+            text-align: left;
+        }}
+
+        .header h2 {{
+            margin: 0 0 12px;
+            font-size: 28px;
+            letter-spacing: 0.4px;
+        }}
+
+        .header p {{
+            margin: 4px 0;
+            font-size: 16px;
+            opacity: 0.92;
+        }}
+
+        .content {{
+            padding: 32px 40px 40px;
+            background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+        }}
+
+        .product-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }}
+
+        .product-card {{
+            border-radius: 16px;
+            padding: 24px;
+            background: #ffffff;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            border: 1px solid #e2e8f0;
+        }}
+
+        .product-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }}
+
+        .product-code {{
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 16px;
+        }}
+
+        .stock-badge {{
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+
+        .stock-available {{
+            background: rgba(34, 197, 94, 0.12);
+            color: #16a34a;
+        }}
+
+        .stock-low {{
+            background: rgba(251, 191, 36, 0.12);
+            color: #d97706;
+        }}
+
+        .stock-out {{
+            background: rgba(239, 68, 68, 0.12);
+            color: #dc2626;
+        }}
+
+        .product-name {{
+            font-weight: 600;
+            color: #233876;
+            font-size: 18px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }}
+
+        .product-price {{
+            font-size: 20px;
+            font-weight: 700;
+            color: #16a34a;
+            margin-bottom: 16px;
+        }}
+
+        .quantity-section {{
+            margin-top: 12px;
+        }}
+
+        .quantity-label {{
+            display: block;
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 8px;
+        }}
+
+        .quantity-input {{
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5f5;
+            border-radius: 12px;
+            font-size: 16px;
+            text-align: center;
+            transition: border 0.2s ease;
+        }}
+
+        .quantity-input:focus {{
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+        }}
+
+        .quantity-input:disabled {{
+            background: #f1f5f9;
+            color: #94a3b8;
+            cursor: not-allowed;
+        }}
+
+        .summary-card {{
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 24px;
+        }}
+
+        .summary-title {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+
+        .summary-value {{
+            font-size: 24px;
+            font-weight: 700;
+        }}
+
+        .summary-grid {{
+            display: grid;
+            gap: 12px;
+        }}
+
+        .summary-item {{
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }}
+
+        .summary-label {{
+            font-size: 14px;
+            opacity: 0.8;
+        }}
+
+        .order-actions {{
+            margin-top: 28px;
+            display: flex;
+            justify-content: flex-end;
+        }}
+
+        .order-btn {{
+            background: linear-gradient(120deg, #2563eb, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }}
+
+        .order-btn:disabled {{
+            opacity: 0.6;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }}
+
+        .order-btn:hover:not(:disabled) {{
+            transform: translateY(-1px);
+            box-shadow: 0 20px 30px rgba(37, 99, 235, 0.25);
+        }}
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="container">
+            <div class="header">
+                <h2>🛒 Çoklu Ürün Siparişi</h2>
+                <p>Sorgulanan ürünler: {query_codes_html}</p>
+                <div style="margin-top: 12px; font-size: 14px; opacity: 0.9;">
+                    Miktar girip siparişinizi tamamlayın
+                </div>
+            </div>
+
+            <div class="content">
+                <div class="product-grid">
+                    {generate_product_cards_html(safe_products)}
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-title">📊 Sipariş Özeti</div>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-label">Toplam Ürün</div>
+                            <div class="summary-value" id="total-items">0</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Toplam Tutar</div>
+                            <div class="summary-value" id="total-amount">0.00 TL</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="order-actions">
+                    <button class="order-btn" onclick="placeOrder()" id="order-btn">
+                        🛒 Sipariş Ver
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        {generate_javascript_code(safe_products, html_filename)}
+    </script>
+</body>
+</html>"""
+    return html
+
+
+def generate_order_history_html(orders, whatsapp_number, html_filename):
+    """Generate HTML content for order history table"""
+    html = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sipariş Geçmişi</title>
+    <style>
+        body {{
+            margin: 0;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(160deg, #1e3c72 0%, #2a5298 45%, #1e3c72 100%);
+            color: #1f2933;
+        }}
+
+        .page-wrapper {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px 48px;
+        }}
+
+        .container {{
+            width: 100%;
+            max-width: 1000px;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(10, 22, 70, 0.18);
+            overflow: hidden;
+        }}
+
+        .header {{
+            background: linear-gradient(120deg, rgba(42, 82, 152, 0.95), rgba(30, 60, 114, 0.95));
+            color: #f8fafc;
+            padding: 36px 40px 28px;
+            text-align: left;
+        }}
+
+        .header h2 {{
+            margin: 0 0 12px;
+            font-size: 28px;
+            letter-spacing: 0.4px;
+        }}
+
+        .header p {{
+            margin: 4px 0;
+            font-size: 16px;
+            opacity: 0.92;
+        }}
+
+        .results-meta {{
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: rgba(248, 250, 252, 0.18);
+            font-size: 14px;
+            margin-top: 14px;
+        }}
+
+        .content {{
+            padding: 32px 40px 40px;
+            background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+        }}
+
+        .table-container {{
+            overflow-x: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            font-size: 14px;
+        }}
+
+        thead {{
+            background: linear-gradient(120deg, #1e3c72, #2a5298);
+            color: white;
+        }}
+
+        th {{
+            padding: 16px 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+        }}
+
+        td {{
+            padding: 14px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
+        }}
+
+        tbody tr:hover {{
+            background: #f8fafc;
+        }}
+
+        .order-number {{
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 15px;
+        }}
+
+        .status {{
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+        }}
+
+        .status-confirmed {{
+            background: rgba(34, 197, 94, 0.12);
+            color: #16a34a;
+        }}
+
+        .status-cancelled {{
+            background: rgba(239, 68, 68, 0.12);
+            color: #dc2626;
+        }}
+
+        .status-draft {{
+            background: rgba(251, 191, 36, 0.12);
+            color: #d97706;
+        }}
+
+        .amount {{
+            font-weight: 700;
+            color: #16a34a;
+            font-size: 15px;
+        }}
+
+        .date {{
+            color: #64748b;
+        }}
+
+        .items-count {{
+            color: #475569;
+            font-weight: 500;
+        }}
+
+        .no-orders {{
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }}
+
+        .no-orders h3 {{
+            margin: 0 0 12px;
+            color: #475569;
+        }}
+
+        @media (max-width: 768px) {{
+            .container {{ border-radius: 18px; }}
+            .header {{ padding: 30px 24px; }}
+            .content {{ padding: 28px 24px 32px; }}
+            th, td {{ padding: 10px 8px; font-size: 13px; }}
+            .order-number {{ font-size: 14px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="container">
+            <div class="header">
+                <h2>📋 Sipariş Geçmişi</h2>
+                <p>Siparişlerinizin detaylı listesi</p>
+                <div class="results-meta">
+                    <span>📦 {len(orders)} sipariş bulundu</span>
+                    <span>🕒 Güncelleme: {datetime.utcnow().strftime('%H:%M')}</span>
+                </div>
+            </div>
+
+            <div class="content">
+                {"".join([f'''
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Sipariş No</th>
+                                <th>Tarih</th>
+                                <th>Durum</th>
+                                <th>Ürün Sayısı</th>
+                                <th>Toplam Tutar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join([f'''
+                            <tr>
+                                <td><span class="order-number">{order['order_number']}</span></td>
+                                <td><span class="date">{order['created_at']}</span></td>
+                                <td><span class="status status-{order['status'].lower()}">{order['status_tr']}</span></td>
+                                <td><span class="items-count">{order['item_count']} adet</span></td>
+                                <td><span class="amount">{order['total_amount']:.2f} TL</span></td>
+                            </tr>
+                            ''' for order in orders_data])}
+                        </tbody>
+                    </table>
+                </div>
+                ''' for orders_data in [orders]]) if orders else '''
+                <div class="no-orders">
+                    <h3>Henüz Sipariş Yok</h3>
+                    <p>Sipariş geçmişiniz bulunmuyor. Ürün araması yaparak yeni sipariş oluşturabilirsiniz.</p>
+                </div>
+                '''}
+            </div>
+        </div>
+    </div>
 </body>
 </html>"""
     return html
@@ -839,7 +2169,7 @@ def valve_search_tool(query: str) -> str:
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
             response = f"💼 {count} valf - {in_stock_count} stokta\n\n"
             response += f"{tunnel_url}/products/{html_filename}\n\n"
-            response += "Ürünleri seçmek için linke tıklayın."
+            response += "Aradığınız ürünleri buldum: Linkten seçim yapabilirsiniz."
             
             print(f"[VALVE SEARCH] Found {count} valves, created session: {session_id}")
             return response
@@ -975,7 +2305,7 @@ def air_preparation_search_tool(query: str) -> str:
             
             response = f"💼 {count} ürün - {in_stock} stokta\n\n"
             response += f"{list_url}\n\n"
-            response += "Ürünleri seçmek için linke tıklayın."
+            response += "Aradığınız ürünleri buldum: Linkten seçim yapabilirsiniz."
             
             return response
         else:
@@ -1058,7 +2388,7 @@ def product_search_tool(query: str) -> str:
                 tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
                 response = f"💼 {count} ürün - {in_stock_count} stokta\n\n"
                 response += f"{tunnel_url}/products/{html_filename}\n\n"
-                response += "Ürünleri seçmek için linke tıklayın."
+                response += "Aradığınız ürünleri buldum: Linkten seçim yapabilirsiniz."
                 
                 print(f"[PRODUCT SEARCH] Found {count} products, created session: {session_id}")
                 return response
@@ -1079,16 +2409,85 @@ def stock_check_tool(product_code: str) -> str:
             name = result['product_name']
             stock = result['stock_quantity']
             price = result['price']
-            
+
             if stock > 0:
                 return f"STOK VAR: {name} (Kod: {product_code})\nStokta: {stock} adet\nFiyat: {price:.2f} TL\nTeslimat: 1-2 gun"
             else:
                 return f"STOK YOK: {name} (Kod: {product_code})\nStokta YOK\nFiyat: {price:.2f} TL\nTemin suresi: 7-10 gun"
         else:
             return f"URUN BULUNAMADI: {product_code}\nHata: {result.get('error', 'Bilinmeyen hata')}"
-            
+
     except Exception as e:
         return f"STOK KONTROL HATASI: {str(e)}"
+
+def multi_stock_check_tool(product_codes: str) -> str:
+    """Çoklu ürün stok kontrolü - virgülle ayrılmış ürün kodları"""
+    try:
+        # Virgülle ayrılmış kodları parse et
+        codes = [code.strip() for code in product_codes.split(',') if code.strip()]
+
+        if not codes:
+            return "HATA: Geçerli ürün kodu bulunamadı. Örnek: 17A0040, 17A0041, 17A0042"
+
+        # Çok fazla ürün kontrolü (performans için)
+        MAX_PRODUCTS = 10
+        if len(codes) > MAX_PRODUCTS:
+            return f"HATA: Çok fazla ürün sorgulandı ({len(codes)} adet). Lütfen en fazla {MAX_PRODUCTS} ürün için stok kontrolü yapın.\n\n" + \
+                   f"Örnek: {', '.join(codes[:3])}... (ve diğerleri)"
+
+        results = []
+        valid_products = []
+
+        for code in codes:
+            result = db.get_stock_info(code)
+            if result.get('success'):
+                name = result['product_name']
+                stock = result['stock_quantity']
+                price = result['price']
+
+                status = "VAR" if stock > 0 else "YOK"
+                stock_info = f"{stock} adet" if stock > 0 else "YOK"
+
+                results.append(f"{code}: {name} - {status} ({stock_info}) - {price:.2f} TL")
+
+                # Geçerli ürünleri listeye ekle (HTML fonksiyonu için gerekli format)
+                valid_products.append({
+                    'code': code,
+                    'name': name,
+                    'stock': stock,
+                    'price': price
+                })
+            else:
+                results.append(f"{code}: Ürün bulunamadı")
+
+        # Eğer geçerli ürünler varsa HTML interface oluştur
+        if valid_products:
+            # HTML dosyasını kaydet
+            timestamp = str(int(time.time() * 1000))
+            html_filename = f"multi_order_{timestamp}.html"
+            html_path = f"{os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')}/{html_filename}"
+
+            # HTML oluştur
+            html_content = generate_multi_product_order_html(valid_products, product_codes, html_filename)
+
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
+            order_link = f"{tunnel_url}/products/{html_filename}"
+
+            response = f"📊 STOK DURUMLARI:\n"
+            response += "="*30 + "\n\n"
+            response += "\n".join(results)
+            response += f"\n\n🛒 SİPARİŞ ARAYÜZÜ:\n{order_link}\n\n"
+            response += "Ürünler için miktar girip sipariş verebilirsiniz."
+
+            return response
+        else:
+            return "HATA: Hiçbir geçerli ürün bulunamadı.\n\n" + "\n".join(results)
+
+    except Exception as e:
+        return f"ÇOKLU STOK KONTROL HATASI: {str(e)}"
 
 def price_quote_tool(product_code: str, quantity: int) -> str:
     """Fiyat teklifi hesapla"""
@@ -1175,63 +2574,92 @@ def save_order(whatsapp_number: str, items_with_quantities: dict, total_amount: 
         db.connection.rollback()
         return f"SIPARIS KAYIT HATASI: {str(e)}"
 
+
+
 def create_order_confirmation_message(order_number: str, order_data: dict, total_amount: float) -> str:
-    """Enhanced order confirmation message oluştur - Single Product için"""
+    """Enhanced order confirmation message oluştur - tek veya çoklu ürünleri destekler"""
     try:
         from datetime import datetime
-        
-        # Header
-        confirmation = " SİPARİŞ ONAY MESAJI \n"
-        confirmation += "="*35 + "\n\n"
-        
-        # Order details
-        confirmation += f" SİPARİŞ NO: {order_number}\n"
-        confirmation += f" TARİH: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
-        
-        # Single product order details
-        confirmation += " SİPARİŞ DETAYI:\n"
-        confirmation += "-" * 35 + "\n"
-        
-        # Single product - should only be one item
-        product_code, details = next(iter(order_data.items()))
-        product_name = details['product_name']
-        quantity = details['quantity']
-        unit_price = details['unit_price']
-        line_total = details['total_price']
-        
-        # Get stock status for this quantity
-        stock_valid, stock_info = validate_quantity_against_stock(product_code, quantity)
-        stock_indicator = "[OK] Stok Uygun" if stock_valid else " Stok Sorunu"
-        
-        confirmation += f"[PRODUCT] Ürün: {product_name}\n"
-        confirmation += f" Kod: {product_code}\n"
-        confirmation += f" Miktar: {quantity} adet\n"
-        confirmation += f"[PRICE] Birim Fiyat: {unit_price:.2f} TL\n"
-        confirmation += f" Toplam Tutar: {line_total:.2f} TL\n"
-        confirmation += f" {stock_indicator}\n\n"
-        
-        # Summary section  
-        confirmation += "-" * 35 + "\n"
-        confirmation += f" GENEL TOPLAM: {total_amount:.2f} TL\n"
-        confirmation += "-" * 35 + "\n\n"
-        
-        # Delivery info removed per user request
-        
-        # Contact info removed per user request - unnecessary on WhatsApp
-        
-        # Footer
-        confirmation += "[OK] Siparişiniz başarıyla alınmıştır!\n"
-        confirmation += " Bizi tercih ettiğiniz için teşekkür ederiz.\n\n"
-        confirmation += " B2B Satış Merkezi\n"
-        confirmation += " Tek Ürün Hızlı Sipariş Sistemi"
-        
-        return confirmation
-        
+
+        if not order_data:
+            return f"[ERROR] Sipariş detayları oluşturulamadı: Ürün listesi boş"
+
+        items_map = order_data.get('items') if isinstance(order_data, dict) and 'items' in order_data else order_data
+        if not isinstance(items_map, dict) or not items_map:
+            return f"[ERROR] Sipariş detayları oluşturulamadı: Ürün listesi hatalı"
+
+        item_entries = list(items_map.items())
+        product_count = len(item_entries)
+        total_units = sum(int(details.get('quantity', 0) or 0) for _, details in item_entries)
+
+        lines: list[str] = []
+        lines.append(" SİPARİŞ ONAY MESAJI ")
+        lines.append("=" * 35)
+        lines.append("")
+        lines.append(f" SİPARİŞ NO: {order_number}")
+        lines.append(f" TARİH: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        lines.append("")
+        lines.append(" SİPARİŞ DETAYI:")
+        lines.append("-" * 35)
+
+        for idx, (product_code, details) in enumerate(item_entries, 1):
+            product_name = details.get('product_name', product_code)
+            quantity = int(details.get('quantity', 0) or 0)
+            unit_price = float(details.get('unit_price', 0) or 0)
+            line_total = float(details.get('total_price', unit_price * quantity) or 0)
+
+            stock_info = details.get('available_stock')
+            try:
+                stock_quantity = int(stock_info) if stock_info is not None else None
+            except (TypeError, ValueError):
+                stock_quantity = None
+
+            if product_count > 1:
+                lines.append(f"{idx}. {product_name}")
+            else:
+                lines.append(f"[PRODUCT] Ürün: {product_name}")
+            lines.append(f"   [PRODUCT] Kod: {product_code}")
+            lines.append(f"    Miktar: {quantity} adet")
+            lines.append(f"   [PRICE] Birim Fiyat: {unit_price:.2f} TL")
+            lines.append(f"    Toplam: {line_total:.2f} TL")
+
+            if stock_quantity is not None:
+                if stock_quantity <= 0:
+                    lines.append("   ⚠️ Stokta yok - Tedarik süresi 7-10 gün")
+                elif stock_quantity < quantity:
+                    lines.append(f"   ⚠️ Yetersiz stok: {stock_quantity} adet mevcut")
+                elif stock_quantity <= 10:
+                    lines.append(f"   ⚠️ Düşük stok: {stock_quantity} adet kaldı")
+                else:
+                    lines.append(f"   [OK] Stokta: {stock_quantity} adet")
+
+            lines.append("")
+
+        lines.append("-" * 35)
+        if product_count > 1:
+            lines.append(f" KALEM SAYISI: {product_count}")
+            lines.append(f" TOPLAM ADET: {total_units} adet")
+            lines.append("-" * 35)
+        lines.append(f" GENEL TOPLAM: {float(total_amount):.2f} TL")
+        lines.append("-" * 35)
+        lines.append("")
+        lines.append("[OK] Siparişiniz başarıyla alınmıştır!")
+        lines.append(" Bizi tercih ettiğiniz için teşekkür ederiz.")
+        lines.append("")
+        lines.append(" B2B Satış Merkezi")
+        if product_count > 1:
+            lines.append(" Çoklu Ürün Sipariş Sistemi")
+        else:
+            lines.append(" Tek Ürün Hızlı Sipariş Sistemi")
+
+        return "\n".join(lines)
+
     except Exception as e:
         return f"SIPARIS ONAYLANDI: {order_number} - Detay mesajı oluşturulurken hata: {str(e)}"
 
+
 def get_order_history(whatsapp_number: str, limit: int = 5) -> str:
-    """Müşterinin sipariş geçmişini getir"""
+    """Müşterinin sipariş geçmişini HTML tablo olarak getir"""
     try:
         cursor = db.connection.cursor()
         cursor.execute("""
@@ -1244,38 +2672,156 @@ def get_order_history(whatsapp_number: str, limit: int = 5) -> str:
             ORDER BY o.created_at DESC
             LIMIT %s
         """, [whatsapp_number, limit])
-        
+
         orders = cursor.fetchall()
         cursor.close()
-        
+
         if not orders:
             return "SIPARIS GECMISI BOS - Henüz hiç siparişiniz bulunmuyor."
-        
-        response = f" SON {len(orders)} SİPARİŞ GEÇMİŞİ:\n"
-        response += "="*40 + "\n\n"
-        
-        for i, (order_num, status, total, date, item_count) in enumerate(orders, 1):
+
+        # Veriyi HTML için hazırla
+        orders_data = []
+        for order_num, status, total, date, item_count in orders:
             # Status'u Türkçe'ye çevir
             status_tr = {
-                'confirmed': '[OK] Onaylandı',
-                'draft': ' Taslak', 
-                'cancelled': '[ERROR] İptal'
-            }.get(status, status)
-            
+                'confirmed': 'Onaylandı',
+                'draft': 'Taslak',
+                'cancelled': 'İptal Edildi'
+            }.get(status.lower(), status)
+
             # Tarih formatı
             date_str = date.strftime('%d/%m/%Y %H:%M') if date else 'Bilinmiyor'
-            
-            response += f"{i}. {order_num}\n"
-            response += f"    Tarih: {date_str}\n"
-            response += f"    Durum: {status_tr}\n"
-            response += f"    Ürün: {item_count} adet\n"
-            response += f"   [PRICE] Tutar: {total:.2f} TL\n\n"
-        
-        response += "[SEARCH] Detay için sipariş numarası gönderebilirsiniz"
+
+            orders_data.append({
+                'order_number': order_num,
+                'status': status,
+                'status_tr': status_tr,
+                'total_amount': float(total),
+                'created_at': date_str,
+                'item_count': item_count
+            })
+
+        # HTML tablo oluştur
+        timestamp = str(int(time.time() * 1000))
+        whatsapp_clean = whatsapp_number.replace('@c.us', '').replace('+', '')
+        html_filename = f"order_history_{whatsapp_clean}_{timestamp}.html"
+        html_path = f"{os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')}/{html_filename}"
+
+        html_content = generate_order_history_html(orders_data, whatsapp_number, html_filename)
+
+        # HTML dosyasını kaydet
+        os.makedirs(os.path.dirname(html_path), exist_ok=True)
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"[HTML CREATED] {html_path}")
+
+        # Link döndür
+        tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
+        history_link = f"{tunnel_url}/products/{html_filename}"
+
+        response = f"🛒 SİPARİŞ GEÇMİŞİ\n"
+        response += "="*25 + "\n\n"
+        response += f"Son {len(orders)} siparişiniz:\n\n"
+        response += f"{history_link}\n\n"
+        response += "Detaylı sipariş geçmişinizi görmek için linke tıklayın."
+
         return response
-        
+
     except Exception as e:
         return f"SIPARIS GECMISI HATASI: {str(e)}"
+
+def get_all_orders_for_customer(whatsapp_number: str) -> list:
+    """Get all orders for a customer with items"""
+    try:
+        cursor = db.connection.cursor()
+
+        # Get all orders
+        cursor.execute("""
+            SELECT id, order_number, status, total_amount, created_at
+            FROM orders
+            WHERE whatsapp_number = %s
+            ORDER BY created_at DESC
+        """, [whatsapp_number])
+
+        orders = cursor.fetchall()
+
+        result = []
+        for order_row in orders:
+            order_id, order_number, status, total_amount, created_at = order_row
+
+            # Get order items
+            cursor.execute("""
+                SELECT product_code, product_name, quantity, unit_price, total_price
+                FROM order_items
+                WHERE order_id = %s
+                ORDER BY id
+            """, [order_id])
+
+            items = cursor.fetchall()
+            items_list = []
+            for item in items:
+                items_list.append({
+                    'product_code': item[0],
+                    'product_name': item[1],
+                    'quantity': item[2],
+                    'unit_price': float(item[3]),
+                    'total_price': float(item[4])
+                })
+
+            result.append({
+                'order_number': order_number,
+                'status': status,
+                'total_amount': float(total_amount),
+                'created_at': created_at.strftime('%d/%m/%Y %H:%M') if created_at else 'Bilinmiyor',
+                'items': items_list
+            })
+
+        cursor.close()
+        return result
+
+    except Exception as e:
+        print(f"[ERROR] get_all_orders_for_customer: {str(e)}")
+        return []
+
+def show_order_details_html(whatsapp_number: str) -> str:
+    """Generate order details HTML and return link"""
+    try:
+        orders = get_all_orders_for_customer(whatsapp_number)
+
+        if not orders:
+            return "Sipariş geçmişiniz bulunmuyor. Henüz hiç sipariş oluşturmadınız."
+
+        # Generate HTML
+        timestamp = str(int(time.time() * 1000))
+        whatsapp_clean = whatsapp_number.replace('@c.us', '').replace('+', '')
+        html_filename = f"orders_{whatsapp_clean}_{timestamp}.html"
+        html_path = f"{os.getenv('PRODUCT_PAGES_DIR', 'C:/projects/WhatsAppB2B-Clean-Codex/product-pages')}/{html_filename}"
+
+        tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
+        html_content = generate_order_details_html(orders, whatsapp_number, html_filename, tunnel_url)
+
+        # Save HTML file
+        os.makedirs(os.path.dirname(html_path), exist_ok=True)
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"[HTML CREATED] {html_path}")
+
+        # Return link
+        tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
+        order_link = f"{tunnel_url}/products/{html_filename}"
+
+        response = f"🛒 SİPARİŞ DETAYLARI\n"
+        response += "="*30 + "\n\n"
+        response += f"Toplam Sipariş: {len(orders)} adet\n\n"
+        response += f"{order_link}\n\n"
+        response += "Siparişlerinizi görüntülemek ve yönetmek için linke tıklayın."
+
+        return response
+
+    except Exception as e:
+        return f"Sipariş detayları oluşturulamadı: {str(e)}"
 
 def get_order_details(whatsapp_number: str, order_number: str) -> str:
     """Belirli sipariş numarasının detaylarını getir"""
@@ -1460,59 +3006,194 @@ def validate_quantity_against_stock(product_code: str, requested_qty: int) -> tu
     except Exception as e:
         return False, f"[ERROR] Stok kontrolü hatası: {str(e)}"
 
+
+def prepare_multi_order_items(requested_quantities: dict[str, int]) -> tuple[dict[str, dict], list[str], float]:
+    """Validate requested multi-product quantities against current stock and enrich order items."""
+    validated_items: dict[str, dict] = {}
+    errors: list[str] = []
+    total_amount = 0.0
+
+    for raw_code, raw_quantity in requested_quantities.items():
+        code = (raw_code or '').strip().upper()
+        if not code:
+            errors.append("Ürün kodu eksik")
+            continue
+
+        try:
+            quantity = int(raw_quantity)
+        except (TypeError, ValueError):
+            errors.append(f"{code}: Geçersiz miktar ({raw_quantity})")
+            continue
+
+        if quantity <= 0:
+            errors.append(f"{code}: Miktar 1 veya daha büyük olmalıdır ({quantity})")
+            continue
+
+        result = db.get_stock_info(code)
+        if not result.get('success'):
+            errors.append(f"{code}: Ürün bulunamadı")
+            continue
+
+        product_name = result.get('product_name', code)
+        price_raw = result.get('price')
+        try:
+            unit_price = float(price_raw)
+        except (TypeError, ValueError):
+            unit_price = 0.0
+
+        stock_quantity_raw = result.get('stock_quantity')
+        try:
+            stock_quantity = int(stock_quantity_raw)
+        except (TypeError, ValueError):
+            stock_quantity = 0
+
+        if stock_quantity <= 0:
+            errors.append(f"{code}: Stokta yok")
+            continue
+
+        if quantity > stock_quantity:
+            errors.append(f"{code}: Sadece {stock_quantity} adet stok var (istediniz: {quantity})")
+            continue
+
+        line_total = unit_price * quantity
+
+        validated_items[code] = {
+            'product_name': product_name,
+            'quantity': quantity,
+            'unit_price': unit_price,
+            'total_price': line_total,
+            'available_stock': stock_quantity
+        }
+
+        total_amount += line_total
+
+    return validated_items, errors, total_amount
+
+
+class ProductOrderItem(TypedDict):
+    """Type definition for product order item"""
+    code: str
+    quantity: int
+
+
+def create_multi_product_order(whatsapp_number: str, products: List[Dict[str, Any]]) -> str:
+    """
+    Create multi-product order directly from detected multi-product order request
+
+    Args:
+        whatsapp_number: Customer's WhatsApp number
+        products: List of product order items, each containing 'code' and 'quantity'
+                  Example: [{'code': 'ABC123', 'quantity': 10}, {'code': 'XYZ456', 'quantity': 5}]
+
+    Returns:
+        str: Order confirmation message or error message
+    """
+    try:
+        print(f"[MULTI ORDER] Creating order for {whatsapp_number}: {len(products)} products")
+
+        aggregated_requests: dict[str, int] = {}
+        validation_errors: list[str] = []
+
+        for product in products:
+            raw_code = product.get('code', '') if isinstance(product, dict) else ''
+            code = str(raw_code).strip().upper()
+            raw_quantity = product.get('quantity', 0) if isinstance(product, dict) else 0
+
+            if not code:
+                validation_errors.append("Ürün kodu eksik")
+                continue
+
+            try:
+                quantity = int(raw_quantity)
+            except (TypeError, ValueError):
+                validation_errors.append(f"{code}: Geçersiz miktar ({raw_quantity})")
+                continue
+
+            aggregated_requests[code] = aggregated_requests.get(code, 0) + quantity
+
+        validated_items, item_errors, total_amount = prepare_multi_order_items(aggregated_requests)
+        validation_errors.extend(item_errors)
+
+        if validation_errors:
+            unique_errors = list(dict.fromkeys(validation_errors))
+            error_msg = "Sipariş oluşturulamadı:\n" + "\n".join(f"• {error}" for error in unique_errors)
+            return error_msg
+
+        if not validated_items:
+            return "Geçerli ürün bulunamadı. Lütfen ürün kodlarını kontrol edin."
+
+        order_result = save_order(whatsapp_number, validated_items, total_amount)
+
+        if "SIPARIS KAYDEDILDI" not in order_result:
+            return f"Sipariş oluşturma hatası: {order_result}"
+
+        try:
+            order_number = order_result.split(":")[1].split("(")[0].strip()
+        except (IndexError, AttributeError):
+            order_number = ""
+
+        confirmation = create_order_confirmation_message(order_number or "BİLİNMİYOR", validated_items, total_amount)
+
+        print(f"[MULTI ORDER] Order {order_number} created successfully for {whatsapp_number}")
+        return confirmation
+
+    except Exception as e:
+        return f"Çoklu sipariş oluşturma hatası: {str(e)}"
+
+
 def create_single_product_order(whatsapp_number: str, product_code: str, quantity: int) -> str:
     """Single product için hızlı sipariş oluşturma"""
     try:
-        # 1. Miktar validasyonu
         is_valid, qty_result = validate_quantity_input(str(quantity))
         if not is_valid:
             return qty_result
-            
-        # 2. Stok validasyonu
+
         stock_valid, stock_message = validate_quantity_against_stock(product_code, quantity)
         if not stock_valid:
             return stock_message
-            
-        # 3. Ürün bilgilerini al
+
         result = db.get_stock_info(product_code)
         if not result.get('success'):
             return f"[ERROR] ÜRÜN BULUNAMADI: {product_code}"
-            
-        product_name = result['product_name']
-        unit_price = result['price']
+
+        product_name = result.get('product_name', product_code)
+
+        unit_price_raw = result.get('price')
+        try:
+            unit_price = float(unit_price_raw)
+        except (TypeError, ValueError):
+            unit_price = 0.0
+
         total_price = unit_price * quantity
-        
-        # 4. Order data hazırla
+
+        stock_quantity_raw = result.get('stock_quantity')
+        try:
+            available_stock = int(stock_quantity_raw)
+        except (TypeError, ValueError):
+            available_stock = 0
+
         order_data = {
             product_code: {
                 'product_name': product_name,
                 'quantity': quantity,
                 'unit_price': unit_price,
-                'total_price': total_price
+                'total_price': total_price,
+                'available_stock': available_stock
             }
         }
-        
-        # 5. Siparişi kaydet
+
         order_result = save_order(whatsapp_number, order_data, total_price)
-        
+
         if "SIPARIS KAYDEDILDI" in order_result:
-            # Order number'ı extract et
             order_number = order_result.split(":")[1].split("(")[0].strip()
-            
-            # Enhanced confirmation message oluştur
             enhanced_message = create_order_confirmation_message(order_number, order_data, total_price)
-            
-            # Clear context after successful order
             clear_selected_product_context(whatsapp_number)
-            
             return enhanced_message
         else:
             return order_result
-            
+
     except Exception as e:
         return f"TEK ÜRÜN SİPARİŞ HATASI: {str(e)}"
-
-# ===================== TASK 2.5: CONTEXT-AWARE INSTANT ORDER FLOW =====================
 
 def process_context_quantity_input(whatsapp_number: str, user_message: str) -> str:
     """
@@ -1698,6 +3379,7 @@ intent_analyzer = Agent(
    Belirsiz: "birkaç", "az", "çok", "biraz"
   -> transfer_to_order_manager()
 - SIPARIS: "sipariş ver", "satın al", "siparişimi tamamla", "onaylıyorum", "siparis vermek istiyorum", "order", "satın almak istiyorum", "EVET", "evet", "tamam", "onayla" -> transfer_to_order_manager()
+- MULTI_ORDER_PLACEMENT: "MULTI_ORDER_PLACEMENT:" (HTML'den gelen otomatik sipariş) -> transfer_to_order_manager()
 - SIPARIS_IPTAL: "iptal", "cancel", "vazgeçtim", "hayır", "istemiyorum" -> transfer_to_order_manager()
 - SIPARIS_GECMIS: "siparişlerim", "geçmiş siparişler", "order history", "son siparişlerim", "ORD-2025-", "sipariş durumu", "sipariş detayı" -> transfer_to_sales_expert()
 - TESEKKUR: "teşekkürler", "teşekkür", "sağol", "sağolun", "thanks", "thank you", "çok güzel", "harika", "mükemmel" -> transfer_to_customer_manager()
@@ -1756,6 +3438,8 @@ product_specialist = Agent(
 - valve_search_tool: VALF aramaları için kullan (5/2 valf, 3/2 valf, 1/4 valf gibi)
 - air_preparation_search_tool: Şartlandırıcı, Regülatör, Yağlayıcı aramaları için kullan (FRY, MFRY, MFR, MR, Y gibi)
 - product_search_tool: Diğer tüm ürünler için kullan (silindir dahil)
+- multi_stock_check_tool: Çoklu ürün stok kontrolü için kullan (17A0040, 17A0041, 17A0042 gibi virgülle ayrılmış kodlar)
+- stock_check_tool: Tek ürün stok kontrolü için kullan
 
 **KULLANIM KURALI**:
 1. Eğer mesajda "valf" kelimesi geçiyorsa -> valve_search_tool kullan
@@ -1796,7 +3480,7 @@ You MUST return EXACTLY:
 http://localhost:3005/products/products_xxx.html
 
 **NEW WORKFLOW**: When product selected from HTML list, customer goes directly to Sales Expert via ÜRÜN_SEÇİLDİ intent!""",
-    functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, transfer_from_product_to_order, transfer_to_sales_expert]
+    functions=[product_search_tool, valve_search_tool, air_preparation_search_tool, stock_check_tool, multi_stock_check_tool, transfer_from_product_to_order, transfer_to_sales_expert]
 )
 
 # 4. Sales Expert - TASK 2.4: Product confirmation + pricing + order history
@@ -1829,7 +3513,8 @@ Fiyat: [fiyat] TL
 Kaç adet? (1-[max_stok] arası)"
 
 **Diğer Komutlar**:
-- "siparişlerim", "geçmiş siparişler" -> get_order_history()
+- "siparişlerim", "geçmiş siparişler" -> get_order_history() (HTML tablo linki)
+- "sipariş detayları", "siparişlerimi gör" -> show_order_details_html() (detaylı cart görünümü)
 - "ORD-2025-XXXX durumu" -> get_order_details()
 - "sipariş ver", "satın al" -> transfer_to_order_manager()
 
@@ -1838,7 +3523,7 @@ Kaç adet? (1-[max_stok] arası)"
 - ÜRÜN_SEÇİLDİ mesajları için handle_product_selection() kullan
 - Miktar sorulduktan sonra müşteri rakam girerse Intent Analyzer MIKTAR_GİRİŞİ algılayıp Order Manager'a gönderir
 - Türkçe konuş ve net talimatlar ver!""",
-    functions=[handle_product_selection, price_quote_tool, get_order_history, get_order_details, transfer_to_order_manager, transfer_back_to_intent_analyzer]
+    functions=[handle_product_selection, price_quote_tool, get_order_history, get_order_details, show_order_details_html, multi_stock_check_tool, detect_multi_product_order, create_multi_product_order, transfer_to_order_manager, transfer_back_to_intent_analyzer]
 )
 
 # 5. Order Manager - TASK 2.5: Enhanced context-aware quantity processing and instant ordering
@@ -1846,6 +3531,11 @@ order_manager = Agent(
     name="Order Manager",
     model=OPENROUTER_MODEL,
     instructions="""Sen Order Manager'sın. **TASK 2.5: ENHANCED Context-Aware Quantity Processing & Instant Ordering**
+
+**ÖNCELİK**: MULTI_ORDER_PLACEMENT mesajı görürsen:
+1. Mesajı parse et: JSON formatındaki orderData'yı çıkar
+2. create_multi_product_order() fonksiyonunu çağır
+3. Sonucu müşteriye bildir
 
 **YENİ TASK 2.5 WORKFLOW**:
 1. **Context + Quantity Processing**: process_context_quantity_input() ile gelişmiş miktar işleme
@@ -1882,6 +3572,7 @@ order_manager = Agent(
 **KRITIK**:
 - İlk önce process_context_quantity_input() çalıştır!
 - Bu fonksiyon başarılı sipariş sonrası transfer_back_to_intent_analyzer()
+- Çoklu ürün siparişi için: detect_multi_product_order() çalıştır, sonra create_multi_product_order()
 - Hata durumlarında kullanıcıya net bilgi ver
 - Türkçe konuş ve detaylı feedback ver""",
     functions=[process_context_quantity_input, get_selected_product_context, detect_quantity_input, create_single_product_order, ask_quantity_for_product, confirm_single_product_order, cancel_order, clear_selected_product_context, transfer_back_to_intent_analyzer]
@@ -2064,6 +3755,13 @@ class SwarmB2BSystem:
         # TASK 2.4: ÜRÜN_SEÇİLDİ/URUN_SECILDI mesaj detection
         if customer_message.startswith("ÜRÜN_SEÇİLDİ:") or customer_message.startswith("URUN_SECILDI:"):
             print(f"[TASK 2.4] ÜRÜN_SEÇİLDİ/URUN_SECILDI intent detected: {customer_message[:100]}")
+            return handle_product_selection(whatsapp_number, customer_message)
+
+        # Check for multi-product orders BEFORE processing
+        is_multi_order, order_data = detect_multi_product_order(customer_message)
+        if is_multi_order:
+            print(f"[MULTI ORDER] Detected {len(order_data['products'])} products in order request")
+            return create_multi_product_order(whatsapp_number, order_data['products'])
 
         # TASK 2.5: MIKTAR_GİRİŞİ pre-detection for logging
         is_quantity_input, _ = detect_quantity_input(customer_message)
@@ -2132,6 +3830,69 @@ class SwarmB2BSystem:
 
 app = Flask(__name__)
 system_instance = None
+
+def get_flask_base_url():
+    """Get the base URL for Flask app - use TUNNEL_URL or localhost"""
+    tunnel_url = os.getenv('TUNNEL_URL')
+    if tunnel_url:
+        return tunnel_url.rstrip('/')
+    else:
+        return "http://localhost:5000"
+
+@app.route('/select-product', methods=['POST'])
+def handle_product_selection_web():
+    """Handle product selection from HTML page - receive URUN_SECILDI message"""
+    global system_instance, product_list_sessions
+    
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "JSON data required"}), 400
+        
+        message = data.get('message', '')
+        session_id = data.get('sessionId', '')
+        product_code = data.get('productCode', '')
+        product_name = data.get('productName', '')
+        product_price = data.get('productPrice', '')
+        
+        if not message or not session_id:
+            return jsonify({"error": "message and sessionId required"}), 400
+        
+        print(f"[SELECT-PRODUCT] Received selection: {message} for session {session_id}")
+        
+        # Get WhatsApp number from session
+        session_data = product_list_sessions.get(session_id)
+        if not session_data:
+            return jsonify({"error": "Session not found or expired"}), 404
+        
+        whatsapp_number = session_data.get('whatsapp_number')
+        if not whatsapp_number:
+            return jsonify({"error": "WhatsApp number not found in session"}), 400
+        
+        print(f"[SELECT-PRODUCT] Processing for WhatsApp: {whatsapp_number}")
+        
+        # Initialize system if needed
+        if system_instance is None:
+            print("[SELECT-PRODUCT] Initializing Swarm system...")
+            system_instance = SwarmB2BSystem()
+        
+        # Process the product selection message
+        result = system_instance.process_message(message, whatsapp_number)
+        
+        return jsonify({
+            "success": True,
+            "response": str(result),
+            "whatsapp_number": whatsapp_number,
+            "product_code": product_code,
+            "session_id": session_id
+        })
+        
+    except Exception as e:
+        print(f"[SELECT-PRODUCT Error] {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @app.route('/process-message', methods=['POST'])
 def process_whatsapp_message():
@@ -2255,6 +4016,110 @@ def clear_memory():
             "success": False,
             "error": str(e)
         }), 500
+
+@app.route('/cancel-order-endpoint', methods=['POST'])
+def cancel_order_endpoint():
+    """Cancel order endpoint called by product-list-server"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "JSON data required"}), 400
+
+        order_number = data.get('orderNumber', '')
+        whatsapp_number = data.get('whatsappNumber', '')
+
+        if not order_number or not whatsapp_number:
+            return jsonify({"success": False, "error": "orderNumber and whatsappNumber required"}), 400
+
+        print(f"[CANCEL ORDER ENDPOINT] {order_number} for {whatsapp_number}")
+
+        # Use existing cancel_order function
+        result = cancel_order(whatsapp_number, order_number)
+
+        print(f"[CANCEL ORDER RESULT] {result}")
+
+        if "İPTAL EDİLDİ" in result or "iptal edildi" in result.lower():
+            return jsonify({"success": True, "message": "Sipariş başarıyla iptal edildi"})
+        else:
+            return jsonify({"success": False, "error": result}), 400
+
+    except Exception as e:
+        print(f"[ERROR] cancel_order_endpoint: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/place-multi-order', methods=['POST'])
+def place_multi_order_endpoint():
+    """Place multi-product order from HTML interface"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "JSON data required"}), 400
+
+        order_data = data.get('orderData', {})
+        whatsapp_number = data.get('whatsappNumber', '')
+
+        if not order_data or not whatsapp_number:
+            return jsonify({"success": False, "error": "orderData and whatsappNumber required"}), 400
+
+        print(f"[MULTI ORDER] {whatsapp_number}: {len(order_data)} products from HTML")
+
+        aggregated_requests: dict[str, int] = {}
+        validation_errors: list[str] = []
+
+        for raw_code, item in order_data.items():
+            code = str(raw_code).strip().upper()
+            if not code:
+                validation_errors.append("Ürün kodu eksik")
+                continue
+
+            quantity_value = item.get('quantity', 0) if isinstance(item, dict) else 0
+            try:
+                quantity = int(quantity_value)
+            except (TypeError, ValueError):
+                validation_errors.append(f"{code or raw_code}: Geçersiz miktar ({quantity_value})")
+                continue
+
+            aggregated_requests[code] = aggregated_requests.get(code, 0) + quantity
+
+        validated_items, item_errors, total_amount = prepare_multi_order_items(aggregated_requests)
+        validation_errors.extend(item_errors)
+
+        if validation_errors:
+            unique_errors = list(dict.fromkeys(validation_errors))
+            error_msg = "Sipariş oluşturulamadı:\n" + "\n".join(f"• {error}" for error in unique_errors)
+            return jsonify({"success": False, "error": error_msg}), 400
+
+        if not validated_items:
+            return jsonify({"success": False, "error": "Geçerli ürün bulunamadı."}), 400
+
+        order_result = save_order(whatsapp_number, validated_items, total_amount)
+
+        if "SIPARIS KAYDEDILDI" in order_result:
+            try:
+                order_number = order_result.split(":")[1].split("(")[0].strip()
+            except (IndexError, AttributeError):
+                order_number = ""
+
+            enhanced_message = create_order_confirmation_message(order_number or "BİLİNMİYOR", validated_items, total_amount)
+
+            return jsonify({
+                "success": True,
+                "orderNumber": order_number,
+                "message": enhanced_message,
+                "totalAmount": round(float(total_amount), 2)
+            })
+        else:
+            return jsonify({"success": False, "error": order_result}), 400
+
+    except Exception as e:
+        print(f"[ERROR] place_multi_order_endpoint: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/delete-order', methods=['POST'])
+def delete_order_endpoint():
+    """Delete order endpoint for direct calls (legacy)"""
+    return cancel_order_endpoint()
 
 # ===================== TEST & SERVER START =====================
 
