@@ -3,7 +3,8 @@
     "allow": [
       "Read(//c/Users/Bahadira-NB3/.local/bin//**)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(python test_fixed_swarm.py:*)"
     ],
     "deny": [],
     "ask": []

@@ -963,10 +963,11 @@ def generate_product_cards_html(safe_products):
     html_parts = []
     for product in safe_products:
         # Stok durumuna göre badge class'ı belirle
-        if product['stock'] > 10:
+        stock_int = int(product.get('stock', 0) or 0)
+        if stock_int > 10:
             badge_class = "stock-available"
             badge_text = "Stokta"
-        elif product['stock'] > 0:
+        elif stock_int > 0:
             badge_class = "stock-low"
             badge_text = "Stokta"
         else:
@@ -974,8 +975,8 @@ def generate_product_cards_html(safe_products):
             badge_text = "Tükendi"
 
         # Stok durumuna göre max değer ve disabled attribute belirle
-        max_value = min(product['stock'], 999) if product['stock'] > 0 else 0
-        disabled_attr = "disabled" if product['stock'] <= 0 else ""
+        max_value = min(stock_int, 999) if stock_int > 0 else 0
+        disabled_attr = "disabled" if stock_int <= 0 else ""
 
         card_html = f'''
                     <div class="product-card">

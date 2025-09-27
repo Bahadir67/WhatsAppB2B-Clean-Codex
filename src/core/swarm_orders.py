@@ -479,6 +479,7 @@ def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, l
         history_link = f"{tunnel_url}/products/{html_filename}"
 
         orders_count = len(orders)
+
         response = "🛒 SİPARİŞ GEÇMİŞİ\n"
         response += "=" * 25 + "\n\n"
         response += f"{timeframe_label} için {orders_count} sipariş bulundu.\n\n"

@@ -7,8 +7,22 @@ import sys
 
 if sys.platform == "win32":
     import locale
+    import codecs
 
+    # Windows console encoding fix for Turkish characters
     os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+    # Set console to UTF-8 mode for proper Turkish character display
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        try:
+            sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+            sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+        except:
+            pass
+
     try:
         locale.setlocale(locale.LC_ALL, 'Turkish_Turkey.utf8')
     except locale.Error:

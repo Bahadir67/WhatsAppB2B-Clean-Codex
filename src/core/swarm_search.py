@@ -171,7 +171,7 @@ def valve_search_tool(query: str) -> str:
             print(f"[HTML CREATED] {html_path}")
             
             # Stokta olan ürünleri say (products değişkenini kullan)
-            in_stock_count = len([p for p in products if p['stock'] > 0])
+            in_stock_count = len([p for p in products if int(p.get('stock', 0) or 0) > 0])
             
             # Liste linki response (Tunnel URL kullan)
             tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
@@ -386,7 +386,7 @@ def product_search_tool(query: str) -> str:
                 print(f"[HTML CREATED] {html_path}")
                 
                 # Stokta olan ürünleri say
-                in_stock_count = len([p for p in all_products if p['stock'] > 0])
+                in_stock_count = len([p for p in all_products if int(p.get('stock', 0) or 0) > 0])
                 
                 # Liste linki response (Tunnel URL kullan)
                 tunnel_url = os.getenv('TUNNEL_URL', 'http://localhost:3005')
@@ -415,7 +415,8 @@ def stock_check_tool(product_code: str) -> str:
             stock = result['stock_quantity']
             price = result['price']
 
-            if stock > 0:
+            stock_int = int(stock) if stock is not None else 0
+            if stock_int > 0:
                 return f"STOK VAR: {name} (Kod: {product_code})\nStokta: {stock} adet\nFiyat: {price:.2f} TL\nTeslimat: 1-2 gun"
             else:
                 return f"STOK YOK: {name} (Kod: {product_code})\nStokta YOK\nFiyat: {price:.2f} TL\nTemin suresi: 7-10 gun"
@@ -451,8 +452,9 @@ def multi_stock_check_tool(product_codes: str) -> str:
                 stock = result['stock_quantity']
                 price = result['price']
 
-                status = "VAR" if stock > 0 else "YOK"
-                stock_info = f"{stock} adet" if stock > 0 else "YOK"
+                stock_int = int(stock) if stock is not None else 0
+                status = "VAR" if stock_int > 0 else "YOK"
+                stock_info = f"{stock_int} adet" if stock_int > 0 else "YOK"
 
                 results.append(f"{code}: {name} - {status} ({stock_info}) - {price:.2f} TL")
 

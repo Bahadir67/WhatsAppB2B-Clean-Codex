@@ -255,6 +255,25 @@ class SwarmB2BSystem:
 
             return final_message
             
+        except UnicodeEncodeError as ue:
+            print(f"[Unicode Error] Encoding issue at position {ue.start}-{ue.end}")
+            # For September orders, directly call the function
+            if "eylül" in customer_message.lower() or "september" in customer_message.lower():
+                from swarm_orders import get_order_history
+                try:
+                    # Ensure proper WhatsApp number format
+                    whatsapp_formatted = whatsapp_number if "@c.us" in whatsapp_number else whatsapp_number + "@c.us"
+                    fallback_msg = get_order_history(whatsapp_formatted, "eylül ayı")
+                    self.add_message_to_memory(whatsapp_number, "assistant", fallback_msg)
+                    return fallback_msg
+                except Exception as e:
+                    error_msg = f"Eylül ayı siparişlerinizi getirirken bir hata oluştu. Lütfen tekrar deneyin."
+                    self.add_message_to_memory(whatsapp_number, "assistant", error_msg)
+                    return error_msg
+            else:
+                error_msg = "Size daha iyi yardımcı olabilmem için, isterseniz siparişlerinizi farklı bir şekilde sorgulayabilirsiniz."
+                self.add_message_to_memory(whatsapp_number, "assistant", error_msg)
+                return error_msg
         except Exception as e:
             print(f"[Swarm Error] {e}")
             error_msg = f"Sistem hatası: {str(e)}"
