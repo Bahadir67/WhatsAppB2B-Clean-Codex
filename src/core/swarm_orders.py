@@ -875,6 +875,7 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
 
 
 
+@functools.lru_cache(maxsize=100)
 def _extract_first_json_object(text: str) -> str | None:
     """Attempt to find the first JSON object within a model response."""
     if not text:
