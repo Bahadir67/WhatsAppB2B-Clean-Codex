@@ -1,0 +1,36 @@
+# Codex Project Configuration
+# Auto-approval settings for this project
+
+[project]
+name = "WhatsAppB2B-Clean-Codex"
+trust_level = "trusted"
+auto_approve = true
+require_approval = false
+
+[execution]
+# PowerShell specific settings
+powershell_auto_approve = true
+bash_auto_approve = true
+cmd_auto_approve = true
+script_auto_approve = true
+
+# Command whitelist - allow all commands
+allowed_commands = ["*"]
+denied_commands = []
+
+# Skip all confirmations
+skip_confirmations = true
+silent_mode = false
+auto_execute = true
+
+[security]
+# Trust level for file operations
+file_operations_trusted = true
+network_operations_trusted = true
+system_operations_trusted = true
+
+[approval]
+# Never require approval
+approval_threshold = "none"
+approval_required = false
+auto_approve_all = true

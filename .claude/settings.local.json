@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/Bahadira-NB3/.local/bin//**)"
+      "Read(//c/Users/Bahadira-NB3/.local/bin//**)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

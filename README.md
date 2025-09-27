@@ -52,6 +52,18 @@ WhatsApp → WhatsApp Bot → OpenAI Swarm System → PostgreSQL → Response
                     │ Technical Support               │
                     └─────────────────────────────────┘
 ```
+### Çekirdek Python Modülleri
+
+- `src/core/swarm_config.py`: .env yükleme, OpenRouter istemcisi ve Swarm ayarları.
+- `src/core/swarm_runtime.py`: `SwarmB2BSystem` sınıfı, hafıza yönetimi ve OpenRouter çağrıları.
+- `src/core/swarm_agents.py`: Intent Analyzer ile uzman ajan tanımları ve handoff yardımcıları.
+- `src/core/swarm_context.py`: WhatsApp oturumu, miktar tespiti ve çoklu sipariş algılayıcıları.
+- `src/core/swarm_orders.py`: Sipariş kayıt/iptal yardımcıları, stok doğrulaması ve onay mesajları.
+- `src/core/swarm_search.py`: Ürün arama araçları, katalog oturumu kaydı ve stok kontrolleri.
+- `src/core/swarm_html.py`: Katalog ve sipariş HTML şablon üreticileri.
+- `src/core/swarm_api.py`: Flask endpoint'leri (`/process-message`, `/select-product`, vb.).
+
+
 
 ## ✨ Özellikler
 
@@ -281,14 +293,23 @@ CREATE TABLE temp_product_sessions (
 
 ```
 Asistan/
-├── swarm_b2b_system.py          # Ana OpenAI Swarm Multi-Agent system
-├── whatsapp-webhook-sender.js   # WhatsApp entegrasyonu
-├── product_search_tools.py      # Ürün arama ve veritabanı araçları
-├── database_utils.py            # Veritabanı yardımcı fonksiyonları
-├── .env                         # Konfigürasyon
-├── package.json                 # Node.js bağımlılıkları
-├── requirements.txt             # Python bağımlılıkları
-└── README.md                    # Bu dosya
+├── src/
+│   └── core/
+│       ├── swarm_b2b_system.py      # CLI entrypoint (test/server)
+│       ├── swarm_api.py             # Flask HTTP yüzeyi
+│       ├── swarm_runtime.py         # SwarmB2BSystem ve hafıza
+│       ├── swarm_agents.py          # Agent tanımları ve handoff yardımcıları
+│       ├── swarm_context.py         # Oturum, miktar ve multi-order yardımcıları
+│       ├── swarm_orders.py          # Sipariş işleme yardımcıları
+│       ├── swarm_search.py          # Ürün arama ve katalog oturumları
+│       ├── swarm_html.py            # HTML üretim yardımcıları
+│       ├── database_tools_fixed.py  # PostgreSQL yardımcıları
+│       ├── whatsapp-webhook-sender.js # WhatsApp köprüsü
+│       ├── product-list-server-v2.js  # Katalog sunucusu
+│       └── config.js                # Ortak Node.js yapılandırması
+├── requirements.txt                 # Python bağımlılıkları
+├── package.json                     # Node.js bağımlılıkları
+└── README.md                        # Bu dosya
 ```
 
 ## 🚀 Sistem Avantajları

@@ -1,0 +1,218 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" as="image" href="https://github.com/user-attachments/assets/8afeab98-f30c-4c31-8c11-ab8557c16620"/><link rel="stylesheet" href="/_next/static/css/a0f06290eedbecaf.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/css/f83b48c29c193b25.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-d6c5e02d5deb3753.js"/><script src="/_next/static/chunks/2da1e1c7-83102c907e7ccdc1.js" async=""></script><script src="/_next/static/chunks/99-a970b689ff031c0b.js" async=""></script><script src="/_next/static/chunks/main-app-e63f4760a71c4437.js" async=""></script><script src="/_next/static/chunks/927-fb861e2d7d88e1d2.js" async=""></script><script src="/_next/static/chunks/app/servers/%5B...id%5D/page-9b4c3eb572cbfc72.js" async=""></script><script src="/_next/static/chunks/640-0ad21e1bc1aef27b.js" async=""></script><script src="/_next/static/chunks/884-8b6a3be350239189.js" async=""></script><script src="/_next/static/chunks/app/layout-0318980c120618d3.js" async=""></script><link rel="preload" href="https://assets.onedollarstats.com/tracker.js" as="script"/><link rel="preload" href="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3453358516240829" as="script" crossorigin=""/><meta name="next-size-adjust" content=""/><title>Codex MCP Wrapper | Awesome MCP Servers</title><meta name="description" content="An MCP server that wraps the OpenAI Codex CLI, exposing its functionality through the MCP API."/><meta property="og:title" content="Awesome MCP Servers"/><meta property="og:description" content="A curated collection of MCP (Model Context Protocol) servers. Search and discover MCP servers and clients."/><meta property="og:url" content="https://mcpservers.org"/><meta property="og:site_name" content="Awesome MCP Servers"/><meta name="twitter:card" content="summary"/><meta name="twitter:title" content="Awesome MCP Servers"/><meta name="twitter:description" content="A curated collection of MCP (Model Context Protocol) servers. Search and discover MCP servers and clients."/><link rel="icon" href="/icon.png"/><script src="/_next/static/chunks/polyfills-42372ed130431b0a.js" noModule=""></script></head><body class="__variable_1e4310 __variable_c3aa02 antialiased min-h-screen flex flex-col"><div hidden=""><!--$--><!--/$--></div><nav class="border-b"><div class="container mx-auto px-4 h-16 flex items-center justify-between"><div class="flex items-center gap-4 md:gap-8"><a class="flex items-center gap-2" href="/"><img alt="MCP Servers" loading="lazy" width="32" height="32" decoding="async" data-nimg="1" style="color:transparent" srcSet="/_next/image?url=%2Ficon.png&amp;w=32&amp;q=75 1x, /_next/image?url=%2Ficon.png&amp;w=64&amp;q=75 2x" src="/_next/image?url=%2Ficon.png&amp;w=64&amp;q=75"/><span class="font-semibold hidden md:block">MCP Servers</span></a><div class="flex items-center gap-4 md:gap-6"><a class="text-sm text-gray-600 hover:text-gray-900 md:text-base" href="/">Home</a><a class="text-sm text-gray-600 hover:text-gray-900 md:text-base" href="/remote-mcp-servers">Remote Servers</a><a class="text-sm text-gray-600 hover:text-gray-900 md:text-base" href="/clients">Clients</a></div></div><a class="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-8 rounded-md px-3 text-xs md:hidden" href="/submit">Submit</a><div class="items-center gap-6 hidden md:flex"><a href="/advertise">Advertise</a><a class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2" href="/submit">Submit</a></div></div></nav><main class="flex-1"><style>
+:root {
+  --bprogress-color: hsl(var(--primary));
+  --bprogress-height: 2px;
+  --bprogress-spinner-size: 18px;
+  --bprogress-spinner-animation-duration: 400ms;
+  --bprogress-spinner-border-size: 2px;
+  --bprogress-box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary));
+  --bprogress-z-index: 99999;
+  --bprogress-spinner-top: 15px;
+  --bprogress-spinner-bottom: auto;
+  --bprogress-spinner-right: 15px;
+  --bprogress-spinner-left: auto;
+}
+
+.bprogress {
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: var(--bprogress-z-index);
+}
+
+.bprogress .bar {
+  background: var(--bprogress-color);
+  position: fixed;
+  z-index: var(--bprogress-z-index);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--bprogress-height);
+}
+
+/* Fancy blur effect */
+.bprogress .peg {
+  display: block;
+  position: absolute;
+  right: 0;
+  width: 100px;
+  height: 100%;
+  box-shadow: var(--bprogress-box-shadow);
+  opacity: 1.0;
+  transform: rotate(3deg) translate(0px, -4px);
+}
+
+/* Remove these to get rid of the spinner */
+.bprogress .spinner {
+  display: block;
+  position: fixed;
+  z-index: var(--bprogress-z-index);
+  top: var(--bprogress-spinner-top);
+  bottom: var(--bprogress-spinner-bottom);
+  right: var(--bprogress-spinner-right);
+  left: var(--bprogress-spinner-left);
+}
+
+.bprogress .spinner-icon {
+  width: var(--bprogress-spinner-size);
+  height: var(--bprogress-spinner-size);
+  box-sizing: border-box;
+  border: solid var(--bprogress-spinner-border-size) transparent;
+  border-top-color: var(--bprogress-color);
+  border-left-color: var(--bprogress-color);
+  border-radius: 50%;
+  -webkit-animation: bprogress-spinner var(--bprogress-spinner-animation-duration) linear infinite;
+  animation: bprogress-spinner var(--bprogress-spinner-animation-duration) linear infinite;
+}
+
+.bprogress-custom-parent {
+  overflow: hidden;
+  position: relative;
+}
+
+.bprogress-custom-parent .bprogress .spinner,
+.bprogress-custom-parent .bprogress .bar {
+  position: absolute;
+}
+
+.bprogress .indeterminate {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--bprogress-height);
+  overflow: hidden;
+}
+
+.bprogress .indeterminate .inc,
+.bprogress .indeterminate .dec {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: var(--bprogress-color);
+}
+
+.bprogress .indeterminate .inc {
+  animation: bprogress-indeterminate-increase 2s infinite;
+}
+
+.bprogress .indeterminate .dec {
+  animation: bprogress-indeterminate-decrease 2s 0.5s infinite;
+}
+
+@-webkit-keyframes bprogress-spinner {
+  0%   { -webkit-transform: rotate(0deg); transform: rotate(0deg); }
+  100% { -webkit-transform: rotate(360deg); transform: rotate(360deg); }
+}
+
+@keyframes bprogress-spinner {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes bprogress-indeterminate-increase {
+  from { left: -5%; width: 5%; }
+  to { left: 130%; width: 100%; }
+}
+
+@keyframes bprogress-indeterminate-decrease {
+  from { left: -80%; width: 80%; }
+  to { left: 110%; width: 10%; }
+}
+</style><!--$--><!--/$--><!--$--><!--/$--><div class="container mx-auto px-4 py-8"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Servers","item":"https://mcpservers.org/"},{"@type":"ListItem","position":2,"name":"Codex MCP Wrapper","item":"https://mcpservers.org/servers/teabranch/agentic-developer-mcp"}]}</script><nav aria-label="breadcrumb"><ol class="flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5"><li class="inline-flex items-center gap-1.5"><a class="transition-colors hover:text-foreground" href="/">Home</a></li><li role="presentation" aria-hidden="true" class="[&amp;&gt;svg]:w-3.5 [&amp;&gt;svg]:h-3.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right"><path d="m9 18 6-6-6-6"></path></svg></li><li class="inline-flex items-center gap-1.5"><a class="transition-colors hover:text-foreground" href="/">Servers</a></li><li role="presentation" aria-hidden="true" class="[&amp;&gt;svg]:w-3.5 [&amp;&gt;svg]:h-3.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right"><path d="m9 18 6-6-6-6"></path></svg></li><li class="inline-flex items-center gap-1.5"><span role="link" aria-disabled="true" aria-current="page" class="font-normal text-foreground">Codex MCP Wrapper</span></li></ol></nav><div class="mt-8"><h1 class="text-3xl font-bold mb-4">Codex MCP Wrapper</h1><p class="text-gray-600 mb-6">An MCP server that wraps the OpenAI Codex CLI, exposing its functionality through the MCP API.</p><div class="mb-8"><a target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800" href="https://github.com/teabranch/agentic-developer-mcp">View on GitHub →</a></div><div class="grid grid-cols-1 md:grid-cols-[60%_40%] gap-10"><div class="border rounded-lg p-4 border-gray-200 markdown-body"><p><img src="https://github.com/user-attachments/assets/8afeab98-f30c-4c31-8c11-ab8557c16620" alt="image"/></p>
+<h1>Agentic Developer MCP</h1>
+<p>This project wraps OpenAI&#x27;s Codex CLI as an MCP (Model Context Protocol) server, making it accessible through the TeaBranch/open-responses-server middleware.<br/>
+<!-- -->This engine may be replaced with OpenCode or Amazon Strands</p>
+<h2>Requirements</h2>
+<ul>
+<li>Node 22 (<code>nvm install 22.15.1 | nvm use 22.15.1</code>) required for Codex</li>
+</ul>
+<h2>Overview</h2>
+<p>The setup consists of three main components:</p>
+<ol>
+<li><strong>Codex CLI</strong>: OpenAI&#x27;s command-line interface for interacting with Codex.</li>
+<li><strong>MCP Wrapper Server</strong>: A Node.js Express server that forwards MCP requests to Codex CLI and formats responses as MCP.</li>
+<li><strong>open-responses-server</strong>: A middleware service that provides Responses API compatibility and MCP support.</li>
+</ol>
+<h2>Installation</h2>
+<h3>Using Docker (Recommended)</h3>
+<pre><code class="language-bash"># Clone this repository
+git clone https://github.com/yourusername/codex-mcp-wrapper.git
+cd codex-mcp-wrapper
+
+# Start the services
+./start.sh
+</code></pre>
+<p>This will start:</p>
+<ul>
+<li>Codex MCP wrapper on port 8080</li>
+<li>open-responses-server on port 3000</li>
+</ul>
+<h3>Manual Installation</h3>
+<pre><code class="language-bash"># Install dependencies
+npm install
+
+# Install Codex CLI globally
+npm install -g @openai/codex
+
+# Start the MCP server
+node mcp-server.js
+# Install the package in development mode
+pip install -e .
+</code></pre>
+<h2>Usage</h2>
+<p>You can run the MCP server using either stdio or SSE transport:</p>
+<pre><code class="language-bash"># Using stdio (default)
+python -m mcp_server
+
+# Using SSE on a specific port
+python -m mcp_server --transport sse --port 8000
+</code></pre>
+<h2>Tool Documentation</h2>
+<h3>run_codex</h3>
+<p>Clones a repository, checks out a specific branch (optional), navigates to a specific folder (optional), and runs Codex with the given request.</p>
+<h4>Parameters</h4>
+<ul>
+<li><code>repository</code> (required): Git repository URL</li>
+<li><code>branch</code> (optional): Git branch to checkout</li>
+<li><code>folder</code> (optional): Folder within the repository to focus on</li>
+<li><code>request</code> (required): Codex request/prompt to run</li>
+</ul>
+<h4>Example</h4>
+<pre><code class="language-json">{
+  &quot;repository&quot;: &quot;https://github.com/username/repo.git&quot;,
+  &quot;branch&quot;: &quot;main&quot;,
+  &quot;folder&quot;: &quot;src&quot;,
+  &quot;request&quot;: &quot;Analyze this code and suggest improvements&quot;
+}
+</code></pre>
+<h3>clone_and_write_prompt</h3>
+<p>Clones a repository, reads the system prompt from <code>.agent/system.md</code>, parses <code>modelId</code> from <code>.agent/agent.json</code>, writes the request to a <code>.prompt</code> file, and invokes the Codex CLI with the extracted model.</p>
+<h4>Parameters</h4>
+<ul>
+<li><code>repository</code> (required): Git repository URL</li>
+<li><code>request</code> (required): Prompt text to run through Codex</li>
+<li><code>folder</code> (optional, default <code>/</code>): Subfolder within the repository to operate in</li>
+</ul>
+<h4>Example</h4>
+<pre><code class="language-json">{
+  &quot;repository&quot;: &quot;https://github.com/username/repo.git&quot;,
+  &quot;folder&quot;: &quot;src&quot;,
+  &quot;request&quot;: &quot;Analyze this code and suggest improvements&quot;
+}
+</code></pre>
+<h3>MCPS Configuration</h3>
+<p>Place a <code>mcps.json</code> file under the <code>.agent/</code> directory to register available MCP tools. Codex will load this configuration automatically.</p>
+<p>Example <code>.agent/mcps.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;agentic-developer-mcp&quot;: {
+      &quot;url&quot;: &quot;...&quot;
+    }
+  }
+}
+</code></pre>
+<h2>Development</h2>
+<p>This project uses the MCP Python SDK to implement an MCP server. The primary implementation is in <code>mcp_server/server.py</code>.</p>
+<h2>License</h2>
+<p>MIT</p></div><div><h2 class="font-bold text-lg mb-4">Related Servers</h2><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-3453358516240829" data-ad-slot="7762820779" data-ad-format="auto" data-full-width-responsive="true"></ins><ul class="my-4"><a href="/servers/yangweijie/cgm-mcp"><li class="mb-4"><h3 class="font-semibold">CGM MCP Server</h3><p class="text-sm text-gray-600 mt-2">A server for CodeFuse-CGM, a graph-integrated large language model designed for repository-level software engineering tasks.</p></li></a><a href="/servers/squirrelogic/mcp-feature-discussion"><li class="mb-4"><h3 class="font-semibold">Feature Discussion</h3><p class="text-sm text-gray-600 mt-2">An AI-powered server that facilitates feature discussions between developers and AI, acting as a lead developer to guide implementation and architectural decisions.</p></li></a><a href="/servers/EmanuelJr/web3-mcp-server"><li class="mb-4"><h3 class="font-semibold">Web3 MCP Server</h3><p class="text-sm text-gray-600 mt-2">An MCP server for interacting with Web3 and EVM-compatible chains.</p></li></a><a href="/servers/XRealSys/chrome-devtool-mcp"><li class="mb-4"><h3 class="font-semibold">Chrome DevTools MCP Server</h3><p class="text-sm text-gray-600 mt-2">An MCP server for AI-assisted frontend development using Chrome DevTools. Requires Google Chrome.</p></li></a><a href="/servers/peepeepopapapeepeepo/prompt-mcp-server"><li class="mb-4"><h3 class="font-semibold">Prompt MCP Server for Amazon Q</h3><p class="text-sm text-gray-600 mt-2">An MCP server for the Amazon Q Developer CLI to manage local prompt files.</p></li></a><a href="/servers/kukapay/rug-check-mcp"><li class="mb-4"><h3 class="font-semibold">Rug-Check-MCP</h3><p class="text-sm text-gray-600 mt-2">Detects potential risks in Solana meme tokens to help avoid rug pulls and unsafe projects.</p></li></a><a href="/servers/GrimFandango42/Claude-MCP-tools"><li class="mb-4"><h3 class="font-semibold">Claude MCP Tools</h3><p class="text-sm text-gray-600 mt-2">An MCP server ecosystem for integrating with Anthropic&#x27;s Claude Desktop and Claude Code CLI.</p></li></a><a href="/servers/chiziuwaga/vercel-ai-sdk-mcp-project"><li class="mb-4"><h3 class="font-semibold">Vercel AI SDK MCP Server Project</h3><p class="text-sm text-gray-600 mt-2">An MCP server for the Vercel AI SDK, enabling integrations with Figma and 21st.dev Magic.</p></li></a><a href="/servers/geoffmc95/Playwright_MCP_Explorer"><li class="mb-4"><h3 class="font-semibold">Playwright MCP Explorer</h3><p class="text-sm text-gray-600 mt-2">An intelligent tool that uses MCP to autonomously explore websites and generate Playwright tests from natural language descriptions.</p></li></a><a href="/servers/bradthebeeble/coderabbitai-mcp"><li class="mb-4"><h3 class="font-semibold">CodeRabbit</h3><p class="text-sm text-gray-600 mt-2">Interact with CodeRabbit AI reviews on GitHub pull requests.</p></li></a></ul><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-3453358516240829" data-ad-slot="7762820779" data-ad-format="auto" data-full-width-responsive="true"></ins></div></div></div></div><!--$--><!--/$--></main><footer class="border-t bg-gray-50 py-6 mt-auto"><div class="container mx-auto px-4 text-center"><p class="text-sm text-gray-600">📧 contact@mcpservers.org</p></div></footer><script src="/_next/static/chunks/webpack-d6c5e02d5deb3753.js" id="_R_" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[7927,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"921\",\"static/chunks/app/servers/%5B...id%5D/page-9b4c3eb572cbfc72.js\"],\"\"]\n3:I[6640,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"640\",\"static/chunks/640-0ad21e1bc1aef27b.js\",\"884\",\"static/chunks/884-8b6a3be350239189.js\",\"177\",\"static/chunks/app/layout-0318980c120618d3.js\"],\"Image\"]\n4:I[9591,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"640\",\"static/chunks/640-0ad21e1bc1aef27b.js\",\"884\",\"static/chunks/884-8b6a3be350239189.js\",\"177\",\"static/chunks/app/layout-0318980c120618d3.js\"],\"default\"]\n5:I[14,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"640\",\"static/chunks/640-0ad21e1bc1aef27b.js\",\"884\",\"static/chunks/884-8b6a3be350239189.js\",\"177\",\"static/chunks/app/layout-0318980c120618d3.js\"],\"NuqsAdapter\"]\n6:I[6658,[],\"\"]\n7:I[4704,[],\"\"]\nf:I[5514,[],\"\"]\n10:I[2406,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"640\",\"static/chunks/640-0ad21e1bc1aef27b.js\",\"884\",\"static/chunks/884-8b6a3be350239189.js\",\"177\",\"static/chunks/app/layout-0318980c120618d3.js\"],\"\"]\n12:I[8683,[],\"OutletBoundary\"]\n14:I[6714,[],\"AsyncMetadataOutlet\"]\n16:I[8683,[],\"ViewportBoundary\"]\n18:I[8683,[],\"MetadataBoundary\"]\n19:\"$Sreact.suspense\"\n:HL[\"/_next/static/media/4473ecc91f70f139-s.p.woff\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff\"}]\n:HL[\"/_next/static/media/463dafcda517f24f-s.p.woff\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff\"}]\n:HL[\"/_next/static/css/a0f06290eedbecaf.css\",\"style\"]\n:HL[\"/_next/static/css/f83b48c29c193b25.css\",\"style\"]\n"])</script><script>self.__next_f.push([1,"0:{\"P\":null,\"b\":\"Kji0-URDLQ9TkNAwqzcJ2\",\"p\":\"\",\"c\":[\"\",\"servers\",\"teabranch\",\"agentic-developer-mcp\"],\"i\":false,\"f\":[[[\"\",{\"children\":[\"servers\",{\"children\":[[\"id\",\"teabranch/agentic-developer-mcp\",\"c\"],{\"children\":[\"__PAGE__\",{}]}]}]},\"$undefined\",\"$undefined\",true],[\"\",[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/a0f06290eedbecaf.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/f83b48c29c193b25.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"en\",\"children\":[[\"$\",\"body\",null,{\"className\":\"__variable_1e4310 __variable_c3aa02 antialiased min-h-screen flex flex-col\",\"children\":[[\"$\",\"nav\",null,{\"className\":\"border-b\",\"children\":[\"$\",\"div\",null,{\"className\":\"container mx-auto px-4 h-16 flex items-center justify-between\",\"children\":[[\"$\",\"div\",null,{\"className\":\"flex items-center gap-4 md:gap-8\",\"children\":[[\"$\",\"$L2\",null,{\"href\":\"/\",\"className\":\"flex items-center gap-2\",\"children\":[[\"$\",\"$L3\",null,{\"src\":\"/icon.png\",\"alt\":\"MCP Servers\",\"width\":32,\"height\":32}],[\"$\",\"span\",null,{\"className\":\"font-semibold hidden md:block\",\"children\":\"MCP Servers\"}]]}],[\"$\",\"div\",null,{\"className\":\"flex items-center gap-4 md:gap-6\",\"children\":[[\"$\",\"$L2\",null,{\"href\":\"/\",\"className\":\"text-sm text-gray-600 hover:text-gray-900 md:text-base\",\"children\":\"Home\"}],[\"$\",\"$L2\",null,{\"href\":\"/remote-mcp-servers\",\"className\":\"text-sm text-gray-600 hover:text-gray-900 md:text-base\",\"children\":\"Remote Servers\"}],[\"$\",\"$L2\",null,{\"href\":\"/clients\",\"className\":\"text-sm text-gray-600 hover:text-gray-900 md:text-base\",\"children\":\"Clients\"}]]}]]}],[\"$\",\"$L2\",null,{\"href\":\"/submit\",\"children\":\"Submit\",\"className\":\"inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [\u0026_svg]:pointer-events-none [\u0026_svg]:size-4 [\u0026_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-8 rounded-md px-3 text-xs md:hidden\",\"ref\":null}],[\"$\",\"div\",null,{\"className\":\"items-center gap-6 hidden md:flex\",\"children\":[[\"$\",\"$L2\",null,{\"href\":\"/advertise\",\"children\":\"Advertise\"}],[\"$\",\"$L2\",null,{\"href\":\"/submit\",\"children\":\"Submit\",\"className\":\"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [\u0026_svg]:pointer-events-none [\u0026_svg]:size-4 [\u0026_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2\",\"ref\":null}]]}]]}]}],[\"$\",\"main\",null,{\"className\":\"flex-1\",\"children\":[\"$\",\"$L4\",null,{\"children\":[\"$\",\"$L5\",null,{\"children\":[\"$\",\"$L6\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L7\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],[]],\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}]}]}]}],[\"$\",\"footer\",null,{\"className\":\"border-t bg-gray-50 py-6 mt-auto\",\"children\":[\"$\",\"div\",null,{\"className\":\"container mx-auto px-4 text-center\",\"children\":\"$L8\"}]}]]}],\"$L9\",\"$La\"]}]]}],{\"children\":[\"servers\",\"$Lb\",{\"children\":[[\"id\",\"teabranch/agentic-developer-mcp\",\"c\"],\"$Lc\",{\"children\":[\"__PAGE__\",\"$Ld\",{},null,false]},null,false]},null,false]},null,false],\"$Le\",false]],\"m\":\"$undefined\",\"G\":[\"$f\",[]],\"s\":false,\"S\":false}\n"])</script><script>self.__next_f.push([1,"8:[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600\",\"children\":\"📧 contact@mcpservers.org\"}]\n9:[\"$\",\"$L10\",null,{\"defer\":true,\"data-site-id\":\"mcpservers.org\",\"src\":\"https://assets.onedollarstats.com/tracker.js\"}]\na:[\"$\",\"$L10\",null,{\"id\":\"google-adsense\",\"src\":\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3453358516240829\",\"crossOrigin\":\"anonymous\",\"strategy\":\"afterInteractive\"}]\nb:[\"$\",\"$1\",\"c\",{\"children\":[null,[\"$\",\"$L6\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L7\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":\"$undefined\",\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}]]}]\nc:[\"$\",\"$1\",\"c\",{\"children\":[null,[\"$\",\"$L6\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L7\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":\"$undefined\",\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}]]}]\nd:[\"$\",\"$1\",\"c\",{\"children\":[\"$L11\",null,[\"$\",\"$L12\",null,{\"children\":[\"$L13\",[\"$\",\"$L14\",null,{\"promise\":\"$@15\"}]]}]]}]\ne:[\"$\",\"$1\",\"h\",{\"children\":[null,[[\"$\",\"$L16\",null,{\"children\":\"$L17\"}],[\"$\",\"meta\",null,{\"name\":\"next-size-adjust\",\"content\":\"\"}]],[\"$\",\"$L18\",null,{\"children\":[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$19\",null,{\"fallback\":null,\"children\":\"$L1a\"}]}]}]]}]\n17:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1\"}]]\n13:null\n"])</script><script>self.__next_f.push([1,"1b:I[7890,[],\"IconMark\"]\n"])</script><script>self.__next_f.push([1,"15:{\"metadata\":[[\"$\",\"title\",\"0\",{\"children\":\"Codex MCP Wrapper | Awesome MCP Servers\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"An MCP server that wraps the OpenAI Codex CLI, exposing its functionality through the MCP API.\"}],[\"$\",\"meta\",\"2\",{\"property\":\"og:title\",\"content\":\"Awesome MCP Servers\"}],[\"$\",\"meta\",\"3\",{\"property\":\"og:description\",\"content\":\"A curated collection of MCP (Model Context Protocol) servers. Search and discover MCP servers and clients.\"}],[\"$\",\"meta\",\"4\",{\"property\":\"og:url\",\"content\":\"https://mcpservers.org\"}],[\"$\",\"meta\",\"5\",{\"property\":\"og:site_name\",\"content\":\"Awesome MCP Servers\"}],[\"$\",\"meta\",\"6\",{\"name\":\"twitter:card\",\"content\":\"summary\"}],[\"$\",\"meta\",\"7\",{\"name\":\"twitter:title\",\"content\":\"Awesome MCP Servers\"}],[\"$\",\"meta\",\"8\",{\"name\":\"twitter:description\",\"content\":\"A curated collection of MCP (Model Context Protocol) servers. Search and discover MCP servers and clients.\"}],[\"$\",\"link\",\"9\",{\"rel\":\"icon\",\"href\":\"/icon.png\"}],[\"$\",\"$L1b\",\"10\",{}]],\"error\":null,\"digest\":\"$undefined\"}\n"])</script><script>self.__next_f.push([1,"1a:\"$15:metadata\"\n"])</script><script>self.__next_f.push([1,"1d:I[1036,[\"927\",\"static/chunks/927-fb861e2d7d88e1d2.js\",\"921\",\"static/chunks/app/servers/%5B...id%5D/page-9b4c3eb572cbfc72.js\"],\"default\"]\n"])</script><script>self.__next_f.push([1,"11:[\"$\",\"div\",null,{\"className\":\"container mx-auto px-4 py-8\",\"children\":[[\"$\",\"script\",null,{\"type\":\"application/ld+json\",\"dangerouslySetInnerHTML\":{\"__html\":\"{\\\"@context\\\":\\\"https://schema.org\\\",\\\"@type\\\":\\\"BreadcrumbList\\\",\\\"itemListElement\\\":[{\\\"@type\\\":\\\"ListItem\\\",\\\"position\\\":1,\\\"name\\\":\\\"Servers\\\",\\\"item\\\":\\\"https://mcpservers.org/\\\"},{\\\"@type\\\":\\\"ListItem\\\",\\\"position\\\":2,\\\"name\\\":\\\"Codex MCP Wrapper\\\",\\\"item\\\":\\\"https://mcpservers.org/servers/teabranch/agentic-developer-mcp\\\"}]}\"}}],[\"$\",\"nav\",null,{\"ref\":\"$undefined\",\"aria-label\":\"breadcrumb\",\"children\":[\"$\",\"ol\",null,{\"ref\":\"$undefined\",\"className\":\"flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5\",\"children\":[[\"$\",\"li\",null,{\"ref\":\"$undefined\",\"className\":\"inline-flex items-center gap-1.5\",\"children\":[\"$\",\"a\",null,{\"ref\":\"$undefined\",\"className\":\"transition-colors hover:text-foreground\",\"href\":\"/\",\"children\":\"Home\"}]}],[\"$\",\"li\",null,{\"role\":\"presentation\",\"aria-hidden\":\"true\",\"className\":\"[\u0026\u003esvg]:w-3.5 [\u0026\u003esvg]:h-3.5\",\"children\":[\"$\",\"svg\",null,{\"ref\":\"$undefined\",\"xmlns\":\"http://www.w3.org/2000/svg\",\"width\":24,\"height\":24,\"viewBox\":\"0 0 24 24\",\"fill\":\"none\",\"stroke\":\"currentColor\",\"strokeWidth\":2,\"strokeLinecap\":\"round\",\"strokeLinejoin\":\"round\",\"className\":\"lucide lucide-chevron-right\",\"children\":[[\"$\",\"path\",\"mthhwq\",{\"d\":\"m9 18 6-6-6-6\"}],\"$undefined\"]}]}],[\"$\",\"li\",null,{\"ref\":\"$undefined\",\"className\":\"inline-flex items-center gap-1.5\",\"children\":[\"$\",\"a\",null,{\"ref\":\"$undefined\",\"className\":\"transition-colors hover:text-foreground\",\"href\":\"/\",\"children\":\"Servers\"}]}],[\"$\",\"li\",null,{\"role\":\"presentation\",\"aria-hidden\":\"true\",\"className\":\"[\u0026\u003esvg]:w-3.5 [\u0026\u003esvg]:h-3.5\",\"children\":[\"$\",\"svg\",null,{\"ref\":\"$undefined\",\"xmlns\":\"http://www.w3.org/2000/svg\",\"width\":24,\"height\":24,\"viewBox\":\"0 0 24 24\",\"fill\":\"none\",\"stroke\":\"currentColor\",\"strokeWidth\":2,\"strokeLinecap\":\"round\",\"strokeLinejoin\":\"round\",\"className\":\"lucide lucide-chevron-right\",\"children\":[[\"$\",\"path\",\"mthhwq\",{\"d\":\"m9 18 6-6-6-6\"}],\"$undefined\"]}]}],[\"$\",\"li\",null,{\"ref\":\"$undefined\",\"className\":\"inline-flex items-center gap-1.5\",\"children\":[\"$\",\"span\",null,{\"ref\":\"$undefined\",\"role\":\"link\",\"aria-disabled\":\"true\",\"aria-current\":\"page\",\"className\":\"font-normal text-foreground\",\"children\":\"Codex MCP Wrapper\"}]}]]}]}],[\"$\",\"div\",null,{\"className\":\"mt-8\",\"children\":[[\"$\",\"h1\",null,{\"className\":\"text-3xl font-bold mb-4\",\"children\":\"Codex MCP Wrapper\"}],[\"$\",\"p\",null,{\"className\":\"text-gray-600 mb-6\",\"children\":\"An MCP server that wraps the OpenAI Codex CLI, exposing its functionality through the MCP API.\"}],[\"$\",\"div\",null,{\"className\":\"mb-8\",\"children\":[\"$\",\"$L2\",null,{\"href\":\"https://github.com/teabranch/agentic-developer-mcp\",\"target\":\"_blank\",\"rel\":\"noopener noreferrer\",\"className\":\"text-blue-600 hover:text-blue-800\",\"children\":\"View on GitHub →\"}]}],[\"$\",\"div\",null,{\"className\":\"grid grid-cols-1 md:grid-cols-[60%_40%] gap-10\",\"children\":[[\"$\",\"div\",null,{\"className\":\"border rounded-lg p-4 border-gray-200 markdown-body\",\"children\":\"$L1c\"}],[\"$\",\"div\",null,{\"children\":[[\"$\",\"h2\",null,{\"className\":\"font-bold text-lg mb-4\",\"children\":\"Related Servers\"}],[\"$\",\"$L1d\",null,{\"slot\":\"7762820779\"}],[\"$\",\"ul\",null,{\"className\":\"my-4\",\"children\":[[\"$\",\"$L2\",\"895\",{\"href\":\"/servers/yangweijie/cgm-mcp\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"CGM MCP Server\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"A server for CodeFuse-CGM, a graph-integrated large language model designed for repository-level software engineering tasks.\"}]]}]}],[\"$\",\"$L2\",\"1725\",{\"href\":\"/servers/squirrelogic/mcp-feature-discussion\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Feature Discussion\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An AI-powered server that facilitates feature discussions between developers and AI, acting as a lead developer to guide implementation and architectural decisions.\"}]]}]}],[\"$\",\"$L2\",\"1622\",{\"href\":\"/servers/EmanuelJr/web3-mcp-server\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Web3 MCP Server\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An MCP server for interacting with Web3 and EVM-compatible chains.\"}]]}]}],[\"$\",\"$L2\",\"918\",{\"href\":\"/servers/XRealSys/chrome-devtool-mcp\",\"children\":\"$L1e\"}],\"$L1f\",\"$L20\",\"$L21\",\"$L22\",\"$L23\",\"$L24\"]}],\"$L25\"]}]]}]]}]]}]\n"])</script><script>self.__next_f.push([1,"1e:[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Chrome DevTools MCP Server\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An MCP server for AI-assisted frontend development using Chrome DevTools. Requires Google Chrome.\"}]]}]\n1f:[\"$\",\"$L2\",\"3300\",{\"href\":\"/servers/peepeepopapapeepeepo/prompt-mcp-server\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Prompt MCP Server for Amazon Q\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An MCP server for the Amazon Q Developer CLI to manage local prompt files.\"}]]}]}]\n20:[\"$\",\"$L2\",\"2772\",{\"href\":\"/servers/kukapay/rug-check-mcp\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Rug-Check-MCP\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"Detects potential risks in Solana meme tokens to help avoid rug pulls and unsafe projects.\"}]]}]}]\n21:[\"$\",\"$L2\",\"2694\",{\"href\":\"/servers/GrimFandango42/Claude-MCP-tools\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Claude MCP Tools\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An MCP server ecosystem for integrating with Anthropic's Claude Desktop and Claude Code CLI.\"}]]}]}]\n22:[\"$\",\"$L2\",\"1589\",{\"href\":\"/servers/chiziuwaga/vercel-ai-sdk-mcp-project\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Vercel AI SDK MCP Server Project\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"An MCP server for the Vercel AI SDK, enabling integrations with Figma and 21st.dev Magic.\"}]]}]}]\n23:[\"$\",\"$L2\",\"2647\",{\"href\":\"/servers/geoffmc95/Playwright_MCP_Explorer\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"Playwright MCP Explorer\"}],[\"$\",\"p\",null,{\"cla"])</script><script>self.__next_f.push([1,"ssName\":\"text-sm text-gray-600 mt-2\",\"children\":\"An intelligent tool that uses MCP to autonomously explore websites and generate Playwright tests from natural language descriptions.\"}]]}]}]\n24:[\"$\",\"$L2\",\"1829\",{\"href\":\"/servers/bradthebeeble/coderabbitai-mcp\",\"children\":[\"$\",\"li\",null,{\"className\":\"mb-4\",\"children\":[[\"$\",\"h3\",null,{\"className\":\"font-semibold\",\"children\":\"CodeRabbit\"}],[\"$\",\"p\",null,{\"className\":\"text-sm text-gray-600 mt-2\",\"children\":\"Interact with CodeRabbit AI reviews on GitHub pull requests.\"}]]}]}]\n25:[\"$\",\"$L1d\",null,{\"slot\":\"7762820779\"}]\n"])</script><script>self.__next_f.push([1,"1c:[[\"$\",\"p\",null,{\"children\":[\"$\",\"img\",null,{\"src\":\"https://github.com/user-attachments/assets/8afeab98-f30c-4c31-8c11-ab8557c16620\",\"alt\":\"image\"}]}],\"\\n\",[\"$\",\"h1\",null,{\"children\":\"Agentic Developer MCP\"}],\"\\n\",[\"$\",\"p\",null,{\"children\":[\"This project wraps OpenAI's Codex CLI as an MCP (Model Context Protocol) server, making it accessible through the TeaBranch/open-responses-server middleware.\",[\"$\",\"br\",null,{}],\"\\n\",\"This engine may be replaced with OpenCode or Amazon Strands\"]}],\"\\n\",[\"$\",\"h2\",null,{\"children\":\"Requirements\"}],\"\\n\",[\"$\",\"ul\",null,{\"children\":[\"\\n\",[\"$\",\"li\",null,{\"children\":[\"Node 22 (\",[\"$\",\"code\",null,{\"children\":\"nvm install 22.15.1 | nvm use 22.15.1\"}],\") required for Codex\"]}],\"\\n\"]}],\"\\n\",[\"$\",\"h2\",null,{\"children\":\"Overview\"}],\"\\n\",[\"$\",\"p\",null,{\"children\":\"The setup consists of three main components:\"}],\"\\n\",[\"$\",\"ol\",null,{\"children\":[\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"strong\",null,{\"children\":\"Codex CLI\"}],\": OpenAI's command-line interface for interacting with Codex.\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"strong\",null,{\"children\":\"MCP Wrapper Server\"}],\": A Node.js Express server that forwards MCP requests to Codex CLI and formats responses as MCP.\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"strong\",null,{\"children\":\"open-responses-server\"}],\": A middleware service that provides Responses API compatibility and MCP support.\"]}],\"\\n\"]}],\"\\n\",[\"$\",\"h2\",null,{\"children\":\"Installation\"}],\"\\n\",[\"$\",\"h3\",null,{\"children\":\"Using Docker (Recommended)\"}],\"\\n\",[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-bash\",\"children\":\"# Clone this repository\\ngit clone https://github.com/yourusername/codex-mcp-wrapper.git\\ncd codex-mcp-wrapper\\n\\n# Start the services\\n./start.sh\\n\"}]}],\"\\n\",[\"$\",\"p\",null,{\"children\":\"This will start:\"}],\"\\n\",[\"$\",\"ul\",null,{\"children\":[\"\\n\",[\"$\",\"li\",null,{\"children\":\"Codex MCP wrapper on port 8080\"}],\"\\n\",[\"$\",\"li\",null,{\"children\":\"open-responses-server on port 3000\"}],\"\\n\"]}],\"\\n\",[\"$\",\"h3\",null,{\"children\":\"Manual Installation\"}],\"\\n\",[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-bash\",\"children\":\"# Install dependencies\\nnpm install\\n\\n# Install Codex CLI globally\\nnpm install -g @openai/codex\\n\\n# Start the MCP server\\nnode mcp-server.js\\n# Install the package in development mode\\npip install -e .\\n\"}]}],\"\\n\",[\"$\",\"h2\",null,{\"children\":\"Usage\"}],\"\\n\",[\"$\",\"p\",null,{\"children\":\"You can run the MCP server using either stdio or SSE transport:\"}],\"\\n\",[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-bash\",\"children\":\"# Using stdio (default)\\npython -m mcp_server\\n\\n# Using SSE on a specific port\\npython -m mcp_server --transport sse --port 8000\\n\"}]}],\"\\n\",[\"$\",\"h2\",null,{\"children\":\"Tool Documentation\"}],\"\\n\",[\"$\",\"h3\",null,{\"children\":\"run_codex\"}],\"\\n\",[\"$\",\"p\",null,{\"children\":\"Clones a repository, checks out a specific branch (optional), navigates to a specific folder (optional), and runs Codex with the given request.\"}],\"\\n\",[\"$\",\"h4\",null,{\"children\":\"Parameters\"}],\"\\n\",[\"$\",\"ul\",null,{\"children\":[\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"repository\"}],\" (required): Git repository URL\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"branch\"}],\" (optional): Git branch to checkout\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"folder\"}],\" (optional): Folder within the repository to focus on\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"request\"}],\" (required): Codex request/prompt to run\"]}],\"\\n\"]}],\"\\n\",[\"$\",\"h4\",null,{\"children\":\"Example\"}],\"\\n\",[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-json\",\"children\":\"{\\n  \\\"repository\\\": \\\"https://github.com/username/repo.git\\\",\\n  \\\"branch\\\": \\\"main\\\",\\n  \\\"folder\\\": \\\"src\\\",\\n  \\\"request\\\": \\\"Analyze this code and suggest improvements\\\"\\n}\\n\"}]}],\"\\n\",[\"$\",\"h3\",null,{\"children\":\"clone_and_write_prompt\"}],\"\\n\",[\"$\",\"p\",null,{\"children\":[\"Clones a repository, reads the system prompt from \",[\"$\",\"code\",null,{\"children\":\".agent/system.md\"}],\", parses \",[\"$\",\"code\",null,{\"children\":\"modelId\"}],\" from \",[\"$\",\"code\",null,{\"children\":\".agent/agent.json\"}],\", writes the request to a \",[\"$\",\"code\",null,{\"children\":\".prompt\"}],\" file, and invokes the Codex CLI with the extracted model.\"]}],\"\\n\",\"$L26\",\"\\n\",\"$L27\",\"\\n\",\"$L28\",\"\\n\",\"$L29\",\"\\n\",\"$L2a\",\"\\n\",\"$L2b\",\"\\n\",\"$L2c\",\"\\n\",\"$L2d\",\"\\n\",\"$L2e\",\"\\n\",\"$L2f\",\"\\n\",\"$L30\",\"\\n\",\"$L31\"]\n"])</script><script>self.__next_f.push([1,"26:[\"$\",\"h4\",null,{\"children\":\"Parameters\"}]\n27:[\"$\",\"ul\",null,{\"children\":[\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"repository\"}],\" (required): Git repository URL\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"request\"}],\" (required): Prompt text to run through Codex\"]}],\"\\n\",[\"$\",\"li\",null,{\"children\":[[\"$\",\"code\",null,{\"children\":\"folder\"}],\" (optional, default \",[\"$\",\"code\",null,{\"children\":\"/\"}],\"): Subfolder within the repository to operate in\"]}],\"\\n\"]}]\n28:[\"$\",\"h4\",null,{\"children\":\"Example\"}]\n29:[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-json\",\"children\":\"{\\n  \\\"repository\\\": \\\"https://github.com/username/repo.git\\\",\\n  \\\"folder\\\": \\\"src\\\",\\n  \\\"request\\\": \\\"Analyze this code and suggest improvements\\\"\\n}\\n\"}]}]\n2a:[\"$\",\"h3\",null,{\"children\":\"MCPS Configuration\"}]\n2b:[\"$\",\"p\",null,{\"children\":[\"Place a \",[\"$\",\"code\",null,{\"children\":\"mcps.json\"}],\" file under the \",[\"$\",\"code\",null,{\"children\":\".agent/\"}],\" directory to register available MCP tools. Codex will load this configuration automatically.\"]}]\n2c:[\"$\",\"p\",null,{\"children\":[\"Example \",[\"$\",\"code\",null,{\"children\":\".agent/mcps.json\"}],\":\"]}]\n2d:[\"$\",\"pre\",null,{\"children\":[\"$\",\"code\",null,{\"className\":\"language-json\",\"children\":\"{\\n  \\\"mcpServers\\\": {\\n    \\\"agentic-developer-mcp\\\": {\\n      \\\"url\\\": \\\"...\\\"\\n    }\\n  }\\n}\\n\"}]}]\n2e:[\"$\",\"h2\",null,{\"children\":\"Development\"}]\n2f:[\"$\",\"p\",null,{\"children\":[\"This project uses the MCP Python SDK to implement an MCP server. The primary implementation is in \",[\"$\",\"code\",null,{\"children\":\"mcp_server/server.py\"}],\".\"]}]\n30:[\"$\",\"h2\",null,{\"children\":\"License\"}]\n31:[\"$\",\"p\",null,{\"children\":\"MIT\"}]\n"])</script></body></html>
