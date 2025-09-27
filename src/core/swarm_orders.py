@@ -873,9 +873,6 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         logger.warning(f"Timeframe pattern not recognized: {original}")
         return default_start, default_end, default_label, fallback_note
 
-    except Exception as e:
-        logger.error(f"Timeframe resolution error: {e}")
-        return default_start, default_end, default_label, f"Zaman aralığı çözümleme hatası: {str(e)}"
 
 
 def _extract_first_json_object(text: str) -> str | None:
@@ -922,6 +919,10 @@ def _llm_resolve_order_history_timeframe(timeframe_text: str | None):
             return None
 
         logger.debug(f"LLM timeframe resolution starting: {query}")
+
+    except Exception as e:
+        logger.error(f"LLM validation error: {e}")
+        return None
 
     try:
         from swarm_config import openrouter_client, OPENROUTER_MODEL
@@ -1026,9 +1027,6 @@ def _llm_resolve_order_history_timeframe(timeframe_text: str | None):
         logger.info(f"LLM timeframe resolution completed: {query} -> {label}")
         return start_dt, end_dt, str(label), note_text
 
-    except Exception as e:
-        logger.error(f"LLM timeframe resolution error: {e}")
-        return None
 
 def handle_product_selection(whatsapp_number: str, selection_message: str) -> str:
     """Handle ÜRÜN_SEÇİLDİ intent - extract product details and ask for quantity"""
