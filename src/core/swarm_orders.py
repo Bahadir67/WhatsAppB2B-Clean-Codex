@@ -878,6 +878,7 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         return default_start, default_end, default_label, f"Zaman aralığı çözümleme hatası: {str(e)}"
 
 
+@functools.lru_cache(maxsize=100)
 def _extract_first_json_object(text: str) -> str | None:
     """Attempt to find the first JSON object within a model response."""
     if not text:
