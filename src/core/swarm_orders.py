@@ -5,6 +5,9 @@ import os
 import random
 import time
 import calendar
+import functools
+import logging
+import traceback
 from datetime import datetime, timedelta
 import re
 import json
@@ -21,6 +24,481 @@ from swarm_context import (
     parse_product_selection_message,
     store_selected_product_context,
 )
+
+# Cache statistics tracking
+_cache_stats = {
+    'hits': 0,
+    'misses': 0,
+    'llm_calls': 0,
+    'regex_calls': 0
+}
+
+# LLM accuracy tracking for confidence scoring
+_llm_accuracy_history = {}
+_llm_confidence_thresholds = {
+    'simple_patterns': 0.6,    # Basit kalıplar için düşük threshold
+    'complex_patterns': 0.8,   # Karmaşık kalıplar için yüksek threshold
+    'default': 0.7             # Genel threshold
+}
+
+# Performance monitoring
+_performance_metrics = {
+    'start_time': time.time(),
+    'total_requests': 0,
+    'successful_requests': 0,
+    'failed_requests': 0,
+    'llm_api_calls': 0,
+    'regex_resolutions': 0,
+    'cache_hits': 0,
+    'cache_misses': 0,
+    'total_response_time': 0.0,
+    'llm_response_time': 0.0,
+    'regex_response_time': 0.0,
+    'memory_usage': [],
+    'error_counts': {},
+}
+
+def get_performance_metrics() -> Dict[str, Any]:
+    """Get comprehensive performance metrics."""
+    current_time = time.time()
+    uptime = current_time - _performance_metrics['start_time']
+
+    # Calculate rates
+    total_requests = _performance_metrics['total_requests']
+    success_rate = (_performance_metrics['successful_requests'] / total_requests * 100) if total_requests > 0 else 0
+    avg_response_time = (_performance_metrics['total_response_time'] / total_requests * 1000) if total_requests > 0 else 0
+
+    return {
+        'uptime_seconds': uptime,
+        'total_requests': total_requests,
+        'successful_requests': _performance_metrics['successful_requests'],
+        'failed_requests': _performance_metrics['failed_requests'],
+        'success_rate_percent': success_rate,
+        'average_response_time_ms': avg_response_time,
+        'llm_api_calls': _performance_metrics['llm_api_calls'],
+        'regex_resolutions': _performance_metrics['regex_resolutions'],
+        'cache_hit_rate_percent': calculate_cache_hit_rate(),
+        'error_breakdown': _performance_metrics['error_counts'].copy(),
+        'memory_usage_mb': get_memory_usage(),
+    }
+
+def calculate_cache_hit_rate() -> float:
+    """Calculate cache hit rate percentage."""
+    hits = _performance_metrics['cache_hits']
+    misses = _performance_metrics['cache_misses']
+    total = hits + misses
+    return (hits / total * 100) if total > 0 else 0
+
+def get_memory_usage() -> float:
+    """Get current memory usage in MB."""
+    try:
+        import psutil
+        process = psutil.Process()
+        return process.memory_info().rss / 1024 / 1024  # MB
+    except ImportError:
+        return 0.0
+
+def record_request(success: bool, response_time: float, method: str):
+    """Record request metrics."""
+    _performance_metrics['total_requests'] += 1
+    _performance_metrics['total_response_time'] += response_time
+
+    if success:
+        _performance_metrics['successful_requests'] += 1
+    else:
+        _performance_metrics['failed_requests'] += 1
+
+    # Record method-specific metrics
+    if method == 'llm':
+        _performance_metrics['llm_api_calls'] += 1
+        _performance_metrics['llm_response_time'] += response_time
+    elif method == 'regex':
+        _performance_metrics['regex_resolutions'] += 1
+        _performance_metrics['regex_response_time'] += response_time
+
+def record_error(error_type: str):
+    """Record error occurrence."""
+    _performance_metrics['error_counts'][error_type] = _performance_metrics['error_counts'].get(error_type, 0) + 1
+
+def record_cache_hit():
+    """Record cache hit."""
+    _performance_metrics['cache_hits'] += 1
+
+def record_cache_miss():
+    """Record cache miss."""
+    _performance_metrics['cache_misses'] += 1
+
+# Constants
+DEFAULT_CACHE_SIZE = 500
+MAX_INPUT_LENGTH = 500
+CONFIDENCE_THRESHOLDS = {
+    'simple_patterns': 0.6,
+    'complex_patterns': 0.8,
+    'default': 0.7
+}
+MAX_LLM_RETRIES = 3
+CACHE_TTL_SECONDS = 3600
+
+# Enhanced logging system
+def setup_logging() -> logging.Logger:
+    """
+    Setup structured logging for the application.
+
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    logger = logging.getLogger('swarm_orders')
+    logger.setLevel(logging.INFO)
+
+    # Remove existing handlers to avoid duplicates
+    logger.handlers.clear()
+
+    # Console handler with detailed formatting
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    # Structured formatter
+    formatter = logging.Formatter(
+        fmt='%(asctime)s | %(name)s | %(levelname)s | %(funcName)s:%(lineno)d | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    return logger
+
+# Global logger instance
+logger = setup_logging()
+
+# Error classification
+class OrderError(Exception):
+    """Base exception for order-related errors."""
+    pass
+
+class TimeframeParsingError(OrderError):
+    """Error in timeframe parsing."""
+    pass
+
+class DatabaseError(OrderError):
+    """Database operation error."""
+    pass
+
+class LLMError(OrderError):
+    """LLM API related error."""
+    pass
+
+class ValidationError(OrderError):
+    """Input validation error."""
+    pass
+
+def log_error_with_context(logger, error, context: Dict[str, Any], error_type: str = "GENERAL"):
+    """Log error with structured context information."""
+    error_context = {
+        'error_type': error_type,
+        'error_message': str(error),
+        'timestamp': datetime.now().isoformat(),
+        **context
+    }
+
+    logger.error(
+        f"[{error_type}] {str(error)}",
+        extra={'context': error_context, 'traceback': traceback.format_exc()}
+    )
+
+    return error_context
+
+def safe_database_operation(operation_name: str, operation_func, *args, **kwargs):
+    """Safely execute database operations with error handling."""
+    try:
+        logger.debug(f"DB operation starting: {operation_name}")
+        result = operation_func(*args, **kwargs)
+        logger.debug(f"DB operation completed: {operation_name}")
+        return result
+
+    except Exception as e:
+        context = {
+            'operation': operation_name,
+            'args_count': len(args),
+            'kwargs_keys': list(kwargs.keys())
+        }
+        log_error_with_context(logger, e, context, "DATABASE_ERROR")
+        raise DatabaseError(f"Database operation failed: {operation_name}") from e
+
+def safe_llm_operation(operation_name: str, operation_func, *args, **kwargs):
+    """Safely execute LLM operations with error handling and retry logic."""
+    max_retries = 3
+    retry_delay = 1.0
+
+    for attempt in range(max_retries):
+        try:
+            logger.debug(f"LLM operation attempt {attempt + 1}: {operation_name}")
+            result = operation_func(*args, **kwargs)
+            logger.debug(f"LLM operation succeeded: {operation_name}")
+            return result
+
+        except Exception as e:
+            context = {
+                'operation': operation_name,
+                'attempt': attempt + 1,
+                'max_retries': max_retries,
+                'args_count': len(args),
+                'kwargs_keys': list(kwargs.keys())
+            }
+
+            if attempt == max_retries - 1:
+                # Last attempt failed
+                log_error_with_context(logger, e, context, "LLM_ERROR")
+                raise LLMError(f"LLM operation failed after {max_retries} attempts: {operation_name}") from e
+            else:
+                # Retry after delay
+                logger.warning(f"LLM operation failed, retrying in {retry_delay}s: {operation_name}")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+
+def validate_and_sanitize_input(input_value: str, input_type: str) -> str:
+    """Validate and sanitize user input with comprehensive checks."""
+    try:
+        if not isinstance(input_value, str):
+            raise ValidationError(f"Input must be string, got {type(input_value)}")
+
+        # Basic sanitization
+        sanitized = input_value.strip()
+
+        # Length validation
+        if len(sanitized) > 500:
+            raise ValidationError("Input too long (>500 characters)")
+
+        if len(sanitized) < 1:
+            raise ValidationError("Input too short (empty)")
+
+        # Type-specific validation
+        if input_type == "timeframe":
+            # Check for potentially dangerous patterns
+            dangerous_patterns = ['<script', 'javascript:', 'eval(', 'exec(']
+            for pattern in dangerous_patterns:
+                if pattern.lower() in sanitized.lower():
+                    raise ValidationError(f"Potentially dangerous content detected: {pattern}")
+
+        elif input_type == "whatsapp_id":
+            # WhatsApp ID format validation
+            if not re.match(r'^[\d\+\-\@\.\s]+$', sanitized):
+                raise ValidationError("Invalid WhatsApp ID format")
+
+        logger.debug(f"Input validated: {input_type} - {len(sanitized)} chars")
+        return sanitized
+
+    except ValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected validation error: {e}")
+        raise ValidationError(f"Input validation failed: {str(e)}") from e
+
+def get_cache_stats() -> Dict[str, int]:
+    """Get cache performance statistics."""
+    return _cache_stats.copy()
+
+def reset_cache_stats() -> None:
+    """Reset cache statistics."""
+    global _cache_stats
+    _cache_stats = {'hits': 0, 'misses': 0, 'llm_calls': 0, 'regex_calls': 0}
+
+def track_llm_accuracy(query: str, llm_result: tuple, was_correct: bool) -> None:
+    """Track LLM accuracy for confidence scoring."""
+    global _llm_accuracy_history
+
+    # Extract pattern from query for categorization
+    pattern = _extract_query_pattern(query)
+    if pattern not in _llm_accuracy_history:
+        _llm_accuracy_history[pattern] = []
+
+    _llm_accuracy_history[pattern].append(was_correct)
+
+    # Keep only last 20 results per pattern
+    if len(_llm_accuracy_history[pattern]) > 20:
+        _llm_accuracy_history[pattern] = _llm_accuracy_history[pattern][-20:]
+
+def get_historical_accuracy(query: str) -> float:
+    """Get historical accuracy score for query pattern."""
+    global _llm_accuracy_history
+
+    pattern = _extract_query_pattern(query)
+    if pattern in _llm_accuracy_history and _llm_accuracy_history[pattern]:
+        # Return accuracy of last 10 predictions
+        recent_results = _llm_accuracy_history[pattern][-10:]
+        return sum(recent_results) / len(recent_results)
+    return 0.5  # Default neutral score
+
+def _extract_query_pattern(query: str) -> str:
+    """Extract pattern category from query."""
+    query_lower = query.lower()
+
+    # Simple patterns
+    simple_patterns = [
+        r'son\s+\d+\s+gun', r'son\s+\d+\s+hafta', r'bu\s+ay',
+        r'gecen\s+ay', r'bu\s+yil', r'gecen\s+yil'
+    ]
+
+    for pattern in simple_patterns:
+        if re.search(pattern, query_lower):
+            return 'simple'
+
+    # Complex patterns
+    complex_indicators = [
+        'başındaki', 'sonundaki', 'arası', 'civarı', 'yaklaşık',
+        'haftanın', 'ayın', 'yılın'
+    ]
+
+    for indicator in complex_indicators:
+        if indicator in query_lower:
+            return 'complex'
+
+    return 'medium'
+
+def _validate_date_consistency(start_date: str, end_date: str) -> float:
+    """Validate date consistency and return confidence score."""
+    try:
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
+        # Check 1: Start date should be before end date
+        if start > end:
+            return 0.0
+
+        # Check 2: Reasonable date range
+        date_range = (end - start).days
+
+        if date_range < 0:
+            return 0.0
+        elif date_range > 400:  # More than a year
+            return 0.3
+        elif date_range > 100:  # More than 3 months
+            return 0.6
+        elif date_range > 30:   # More than a month
+            return 0.8
+        else:
+            return 1.0
+
+    except (ValueError, TypeError):
+        return 0.0
+
+def _compare_with_regex_fallback(query: str, llm_result: tuple) -> float:
+    """Compare LLM result with regex fallback and return similarity score."""
+    try:
+        # Get regex result for comparison
+        regex_result = _resolve_order_history_timeframe(query)
+        if not regex_result:
+            return 0.5  # No regex fallback available
+
+        llm_start, llm_end, llm_label, llm_note = llm_result
+        regex_start, regex_end, regex_label, regex_note = regex_result
+
+        # Convert to comparable format
+        llm_start_date = llm_start.date() if hasattr(llm_start, 'date') else llm_start
+        llm_end_date = llm_end.date() if hasattr(llm_end, 'date') else llm_end
+        regex_start_date = regex_start.date() if hasattr(regex_start, 'date') else regex_start
+        regex_end_date = regex_end.date() if hasattr(regex_end, 'date') else regex_end
+
+        # Calculate date similarity
+        date_similarity = 0.0
+        if llm_start_date == regex_start_date and llm_end_date == regex_end_date:
+            date_similarity = 1.0
+        elif abs((llm_end_date - llm_start_date).days - (regex_end_date - regex_start_date).days) <= 1:
+            date_similarity = 0.8
+        elif abs((llm_end_date - llm_start_date).days - (regex_end_date - regex_start_date).days) <= 3:
+            date_similarity = 0.6
+        else:
+            date_similarity = 0.2
+
+        return date_similarity
+
+    except Exception:
+        return 0.5  # Default score on error
+
+def _evaluate_llm_confidence(query: str, llm_result: tuple) -> float:
+    """Multi-factor confidence evaluation for LLM results."""
+    if not llm_result:
+        return 0.0
+
+    try:
+        start_date, end_date, label, note = llm_result
+
+        # Factor 1: Base LLM confidence (if available in note)
+        base_confidence = 0.7  # Default
+        if note and isinstance(note, str):
+            if 'yüksek güven' in note.lower() or 'high confidence' in note.lower():
+                base_confidence = 0.9
+            elif 'orta güven' in note.lower() or 'medium confidence' in note.lower():
+                base_confidence = 0.6
+            elif 'düşük güven' in note.lower() or 'low confidence' in note.lower():
+                base_confidence = 0.3
+
+        # Factor 2: Date consistency
+        date_consistency = _validate_date_consistency(start_date, end_date)
+
+        # Factor 3: Regex comparison
+        regex_similarity = _compare_with_regex_fallback(query, llm_result)
+
+        # Factor 4: Historical accuracy
+        historical_score = get_historical_accuracy(query)
+
+        # Factor 5: Query pattern complexity
+        pattern_type = _extract_query_pattern(query)
+        pattern_multiplier = {
+            'simple': 1.1,
+            'medium': 1.0,
+            'complex': 0.9
+        }.get(pattern_type, 1.0)
+
+        # Calculate weighted final confidence
+        final_confidence = (
+            base_confidence * 0.25 +      # LLM'in kendi değerlendirmesi
+            date_consistency * 0.30 +    # Tarih tutarlılığı
+            regex_similarity * 0.25 +    # Regex karşılaştırması
+            historical_score * 0.20      # Geçmiş doğruluk
+        ) * pattern_multiplier
+
+        # Cap between 0 and 1
+        return max(0.0, min(1.0, final_confidence))
+
+    except Exception:
+        return 0.0
+
+def _get_adaptive_threshold(query: str) -> float:
+    """Get adaptive confidence threshold based on query pattern."""
+    global _llm_confidence_thresholds
+
+    pattern_type = _extract_query_pattern(query)
+    return _llm_confidence_thresholds.get(pattern_type, _llm_confidence_thresholds['default'])
+
+def cache_time_resolution(func):
+    """Cache decorator for time resolution functions with statistics tracking."""
+    @functools.lru_cache(maxsize=1000)
+    def wrapper(query: str, *args, **kwargs):
+        _cache_stats['hits'] += 1
+        return func(query, *args, **kwargs)
+
+    def inner(query: str, *args, **kwargs):
+        if not isinstance(query, str):
+            _cache_stats['misses'] += 1
+            return func(query, *args, **kwargs)
+
+        cache_key = f"{query}:{args}:{kwargs}"
+
+        # Check if we have cached result
+        if hasattr(wrapper, '_cache_info'):
+            if cache_key in wrapper._cache:
+                _cache_stats['hits'] += 1
+                return wrapper._cache[cache_key]
+
+        _cache_stats['misses'] += 1
+        result = func(query, *args, **kwargs)
+        wrapper._cache[cache_key] = result
+        return result
+
+    # Copy cache info to wrapper
+    wrapper._cache = {}
+    wrapper._cache_info = getattr(func, 'cache_info', lambda: None)()
+    return inner
 
 
 MONTH_NAMES_TR = {
@@ -71,6 +549,7 @@ for _month, _synonyms in _MONTH_SYNONYM_MAP.items():
         _MONTH_KEYWORDS[normalized] = _month
 
 
+@functools.lru_cache(maxsize=500)
 def _normalize_whatsapp_identifier(value: str | None) -> str | None:
     """Ensure WhatsApp identifiers use the @c.us chat ID format."""
     if not value:
@@ -97,27 +576,65 @@ def _normalize_whatsapp_identifier(value: str | None) -> str | None:
     return formatted + '@c.us'
 
 
+@functools.lru_cache(maxsize=1000)
 def _normalize_timeframe_text(value: str) -> str:
+    """Enhanced Turkish text normalization with comprehensive character support."""
+    if not value:
+        return value
+
+    # Comprehensive Turkish character replacements (both cases)
     replacements = {
-        "ı": "i",
-        "ğ": "g",
-        "ü": "u",
-        "ş": "s",
-        "ö": "o",
-        "ç": "c",
-        "â": "a",
-        "î": "i",
-        "û": "u",
+        # Lowercase mappings
+        "ı": "i", "i̇": "i",  # dotted i and dotless ı
+        "ğ": "g", "ğ": "g",
+        "ü": "u", "ü": "u",
+        "ş": "s", "ş": "s",
+        "ö": "o", "ö": "o",
+        "ç": "c", "ç": "c",
+        # Uppercase mappings
+        "İ": "i", "İ": "i",
+        "Ğ": "g", "Ğ": "g",
+        "Ü": "u", "Ü": "u",
+        "Ş": "s", "Ş": "s",
+        "Ö": "o", "Ö": "o",
+        "Ç": "c", "Ç": "c",
+        # Arabic characters (sometimes used in Turkish)
+        "â": "a", "Â": "a",
+        "î": "i", "Î": "i",
+        "û": "u", "Û": "u",
+        # Common typos and variations
+        "ei": "ey", "Ei": "Ey", "eı": "eyi", "Eı": "Eyi",
+        "ai": "ay", "Ai": "Ay", "aı": "ayi", "Aı": "Ayi",
+        "oi": "oy", "Oi": "Oy", "oı": "oyi", "Oı": "Oyi",
+        "ui": "uy", "Ui": "Uy", "uı": "uyi", "Uı": "Uyi",
+        "ii": "iyi", "Ii": "Iyi", "ıı": "iyi", "İi": "Iyi",
     }
+
     normalized = value.lower()
+
+    # Apply character replacements
     for src, dst in replacements.items():
         normalized = normalized.replace(src, dst)
+
+    # Handle special Turkish cases
     normalized = normalized.replace('-', ' ')
     normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
     normalized = re.sub(r'\s+', ' ', normalized)
+
+    # Fix common Turkish word patterns
     normalized = re.sub(r'(^|\s)on(\s+\d+\s+gun)', lambda m: m.group(1) + 'son' + m.group(2), normalized)
     normalized = re.sub(r'(\d+)\s+hafta\s+once(?:ki)?', r'son \1 hafta', normalized)
     normalized = re.sub(r'son(\d+)', r'son \1', normalized)
+
+    # Handle Turkish number words
+    turkish_numbers = {
+        'bir': '1', 'iki': '2', 'üç': '3', 'dört': '4', 'beş': '5',
+        'altı': '6', 'yedi': '7', 'sekiz': '8', 'dokuz': '9', 'on': '10'
+    }
+
+    for turkish, digit in turkish_numbers.items():
+        normalized = re.sub(rf'\b{re.escape(turkish)}\b', digit, normalized)
+
     return normalized.strip()
 
 
@@ -146,9 +663,17 @@ def _parse_user_date(value: str, *, is_start: bool) -> datetime:
 
 
 
+@functools.lru_cache(maxsize=500)
 def _resolve_order_history_timeframe(timeframe_text: str | None):
+    """Resolve natural language timeframe via regex patterns with enhanced error handling."""
     from datetime import datetime, timedelta
     import calendar
+
+    # Track regex calls
+    global _cache_stats
+    _cache_stats['regex_calls'] += 1
+
+    logger.debug(f"Timeframe resolution starting: {timeframe_text}")
 
     now = datetime.now()
     default_start = datetime(now.year, now.month, 1)
@@ -190,19 +715,64 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         label = f"{year}"
         return start_year, end_year, label, None
 
-    day_match = re.search(r'son\s+(\d+)\s+gun(?:luk)?', normalized)
-    if day_match:
-        days = max(1, int(day_match.group(1)))
-        start_range = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
-        label = f"Son {days} Gün"
-        return start_range, default_end, label, None
+    # Enhanced day patterns
+    day_patterns = [
+        (r'son\s+(\d+)\s+gun(?:luk)?', 'days'),
+        (r'(\d+)\s+gun\s+once', 'days_ago'),
+        (r'(\d+)\s+gunluk', 'days_period'),
+    ]
 
-    week_match = re.search(r'son\s+(\d+)\s+hafta', normalized)
-    if week_match:
-        weeks = max(1, int(week_match.group(1)))
-        start_range = (now - timedelta(days=weeks * 7)).replace(hour=0, minute=0, second=0, microsecond=0)
-        label = f"Son {weeks} Hafta"
-        return start_range, default_end, label, None
+    for pattern, pattern_type in day_patterns:
+        day_match = re.search(pattern, normalized)
+        if day_match:
+            days = max(1, int(day_match.group(1)))
+            if pattern_type == 'days_ago':
+                start_range = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_range = (now - timedelta(days=days-1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+                label = f"{days} Gün Önce"
+            else:
+                start_range = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+                label = f"Son {days} Gün"
+            return start_range, default_end, label, None
+
+    # Enhanced week patterns
+    week_patterns = [
+        (r'son\s+(\d+)\s+hafta', 'weeks'),
+        (r'(\d+)\s+hafta\s+once', 'weeks_ago'),
+        (r'gecen\s+hafta', 'last_week'),
+        (r'gecen\s+hafta(?:nin)?', 'last_week'),
+        (r'onceki\s+hafta', 'previous_week'),
+        (r'son\s+hafta', 'last_week'),
+        (r'bu\s+hafta', 'this_week'),
+    ]
+
+    for pattern, pattern_type in week_patterns:
+        week_match = re.search(pattern, normalized)
+        if week_match:
+            if pattern_type in ['last_week', 'previous_week', 'gecen']:
+                # Geçen haftanın başlangıç ve bitişi
+                days_since_monday = now.weekday()  # 0=Monday, 6=Sunday
+                start_week = (now - timedelta(days=days_since_monday + 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_week = (now - timedelta(days=days_since_monday + 1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+                label = "Geçen Hafta"
+            elif pattern_type == 'this_week':
+                # Bu haftanın başlangıç ve bitişi
+                days_since_monday = now.weekday()
+                start_week = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+                label = "Bu Hafta"
+                end_week = default_end
+            elif pattern_type == 'weeks_ago':
+                weeks = max(1, int(week_match.group(1)))
+                start_week = (now - timedelta(days=weeks * 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_week = (now - timedelta(days=(weeks-1) * 7)).replace(hour=23, minute=59, second=59, microsecond=999999)
+                label = f"{weeks} Hafta Önce"
+            else:
+                weeks = max(1, int(week_match.group(1)))
+                start_week = (now - timedelta(days=weeks * 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                label = f"Son {weeks} Hafta"
+                end_week = default_end
+
+            return start_week, end_week, label, None
 
     if any(keyword in normalized for keyword in ['bugun', 'bugunku', 'bu gun']):
         start_range = datetime(now.year, now.month, now.day)
@@ -220,6 +790,43 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         start_range = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
         label = 'Son 1 Ay'
         return start_range, default_end, label, None
+
+    # Enhanced period patterns (after Turkish normalization: ayın -> ayin)
+    period_patterns = [
+        (r'ayin\s+basi', 'month_start'),
+        (r'ayin\s+sonu', 'month_end'),
+        (r'ayin\s+orta', 'month_middle'),
+        (r'hafta\s+sonu', 'weekend'),
+        (r'hafta\s+ici', 'weekday'),
+    ]
+
+    for pattern, period_type in period_patterns:
+        if re.search(pattern, normalized):
+            if period_type == 'month_start':
+                # Ayın ilk 10 günü
+                start_range = datetime(now.year, now.month, 1)
+                end_range = datetime(now.year, now.month, min(10, calendar.monthrange(now.year, now.month)[1]), 23, 59, 59)
+                label = 'Ayın Başı'
+            elif period_type == 'month_end':
+                # Ayın son 10 günü
+                last_day = calendar.monthrange(now.year, now.month)[1]
+                start_range = datetime(now.year, now.month, max(1, last_day-9))
+                end_range = default_end
+                label = 'Ayın Sonu'
+            elif period_type == 'weekend':
+                # Bu hafta sonu (Cumartesi ve Pazar)
+                days_to_saturday = (5 - now.weekday()) % 7  # 5=Cumartesi
+                if days_to_saturday == 0:  # Zaten cumartesi
+                    saturday = now
+                else:
+                    saturday = now + timedelta(days=days_to_saturday)
+                start_range = saturday.replace(hour=0, minute=0, second=0, microsecond=0)
+                sunday = saturday + timedelta(days=1)
+                end_range = sunday.replace(hour=23, minute=59, second=59, microsecond=999999)
+                label = 'Hafta Sonu'
+            else:
+                continue
+            return start_range, end_range, label, None
 
     month_window_match = re.search(r'son\s+(\d+)\s+ay', normalized)
     if month_window_match:
@@ -262,8 +869,13 @@ def _resolve_order_history_timeframe(timeframe_text: str | None):
         label = f"{year}"
         return start_year, end_year, label, None
 
-    fallback_note = f"Belirtilen zaman aralığı ('{original}') anlaşılamadı. Varsayılan olarak bu ay listelendi."
-    return default_start, default_end, default_label, fallback_note
+        fallback_note = f"Belirtilen zaman aralığı ('{original}') anlaşılamadı. Varsayılan olarak bu ay listelendi."
+        logger.warning(f"Timeframe pattern not recognized: {original}")
+        return default_start, default_end, default_label, fallback_note
+
+    except Exception as e:
+        logger.error(f"Timeframe resolution error: {e}")
+        return default_start, default_end, default_label, f"Zaman aralığı çözümleme hatası: {str(e)}"
 
 
 def _extract_first_json_object(text: str) -> str | None:
@@ -291,17 +903,25 @@ def _extract_first_json_object(text: str) -> str | None:
 
 
 def _llm_resolve_order_history_timeframe(timeframe_text: str | None):
-    """Resolve natural language timeframe via LLM; returns tuple or None on failure."""
-    if timeframe_text is None:
-        return None
-    if isinstance(timeframe_text, str):
-        query = timeframe_text.strip()
-        if not query:
+    """Resolve natural language timeframe via LLM with enhanced error handling."""
+    try:
+        # Track LLM calls
+        global _cache_stats
+        _cache_stats['llm_calls'] += 1
+
+        # Input validation
+        if timeframe_text is None:
             return None
-        if query.isdigit():
+        if isinstance(timeframe_text, str):
+            query = timeframe_text.strip()
+            if not query:
+                return None
+            if query.isdigit():
+                return None
+        else:
             return None
-    else:
-        return None
+
+        logger.debug(f"LLM timeframe resolution starting: {query}")
 
     try:
         from swarm_config import openrouter_client, OPENROUTER_MODEL
@@ -380,19 +1000,35 @@ def _llm_resolve_order_history_timeframe(timeframe_text: str | None):
         print(f"[LLM TIMEFRAME] Başlangıç bitişten büyük: {query}")
         return None
 
-    confidence = data.get('confidence')
-    confidence_value = 1.0
-    if isinstance(confidence, (int, float)):
-        confidence_value = float(confidence)
-    elif isinstance(confidence, str):
-        conf_map = {'high': 0.9, 'medium': 0.6, 'low': 0.3}
-        confidence_value = conf_map.get(confidence.lower(), 1.0)
-    if confidence_value < 0.5:
-        print(f"[LLM TIMEFRAME] Düşük güven ({confidence_value}) - fallback")
+    # Enhanced confidence evaluation
+    raw_confidence = data.get('confidence', 0.7)
+    llm_result = (start_dt, end_dt, str(label), str(note) if note else '')
+
+    # Multi-factor confidence evaluation
+    final_confidence = _evaluate_llm_confidence(query, llm_result)
+
+    # Adaptive threshold based on query pattern
+    threshold = _get_adaptive_threshold(query)
+
+    print(f"[LLM TIMEFRAME] Query: {query}")
+    print(f"[LLM TIMEFRAME] Raw confidence: {raw_confidence}")
+    print(f"[LLM TIMEFRAME] Final confidence: {final_confidence:.3f}")
+    print(f"[LLM TIMEFRAME] Threshold: {threshold}")
+
+    if final_confidence < threshold:
+        print(f"[LLM TIMEFRAME] Düşük güven ({final_confidence:.3f} < {threshold}) - fallback")
         return None
 
-    note_text = str(note) if note else 'Zaman aralığı yapay zeka tarafından yorumlandı.'
-    return start_dt, end_dt, str(label), note_text
+        # Track accuracy for future improvements
+        track_llm_accuracy(query, llm_result, True)  # Assume correct for now
+
+        note_text = str(note) if note else 'Zaman aralığı yapay zeka tarafından yorumlandı.'
+        logger.info(f"LLM timeframe resolution completed: {query} -> {label}")
+        return start_dt, end_dt, str(label), note_text
+
+    except Exception as e:
+        logger.error(f"LLM timeframe resolution error: {e}")
+        return None
 
 def handle_product_selection(whatsapp_number: str, selection_message: str) -> str:
     """Handle ÜRÜN_SEÇİLDİ intent - extract product details and ask for quantity"""
@@ -662,9 +1298,15 @@ def get_order_history(whatsapp_number: str, timeframe_text: str | None = None, l
         )
         params = [whatsapp_lookup, start_dt, end_dt]
 
-        if limit and limit > 0:
-            query += " LIMIT %s"
-            params.append(limit)
+        if limit is not None:
+            try:
+                limit = int(limit)
+                if limit > 0:
+                    query += " LIMIT %s"
+                    params.append(limit)
+            except ValueError:
+                # Invalid limit, ignore
+                pass
 
         cursor.execute(query, params)
         orders = cursor.fetchall()
